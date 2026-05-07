@@ -74,13 +74,8 @@ hr {
   min-height: 100dvh;
   background: var(--paper);
   color: var(--ink);
-  display: flex;
-  flex-direction: column;
-}
-.app-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
 }
 
 .container {
@@ -207,7 +202,7 @@ hr {
 
 /* Empty home — intro 单独居中 */
 .home-empty {
-  flex: 1;
+  min-height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
