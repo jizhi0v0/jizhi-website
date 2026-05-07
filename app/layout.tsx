@@ -7,9 +7,10 @@ import "./globals.css";
 const serif = Noto_Serif_SC({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  display: "swap",
+  display: "optional",
   variable: "--font-noto-serif-sc",
   preload: true,
+  adjustFontFallback: false,
 });
 
 const sans = Inter({
