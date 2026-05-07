@@ -50,7 +50,7 @@ export default function RootLayout({
       <body>
         <div className="app">
           <Header />
-          {children}
+          <main className="app-main">{children}</main>
           <Footer />
         </div>
       </body>

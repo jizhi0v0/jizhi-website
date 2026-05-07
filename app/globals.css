@@ -71,9 +71,16 @@ hr {
 /* ===== 主原型样式 ===== */
 
 .app {
-  min-height: 100%;
+  min-height: 100dvh;
   background: var(--paper);
   color: var(--ink);
+  display: flex;
+  flex-direction: column;
+}
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .container {
@@ -200,20 +207,22 @@ hr {
 
 /* Empty home — intro 单独居中 */
 .home-empty {
-  min-height: calc(100vh - 320px);
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px 32px 80px;
+  padding: 40px 32px;
+  max-width: none;
 }
 .home-empty-line {
   font-family: var(--font-serif);
-  font-size: 18px;
+  font-size: 22px;
   color: var(--ink-2);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   font-style: italic;
   margin: 0;
   text-align: center;
+  line-height: 1.7;
 }
 .post-row {
   display: grid;
