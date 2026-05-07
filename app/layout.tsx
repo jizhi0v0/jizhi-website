@@ -1,17 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Noto_Serif_SC, Inter, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import "./globals.css";
-
-const serif = Noto_Serif_SC({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  display: "optional",
-  variable: "--font-noto-serif-sc",
-  preload: true,
-  adjustFontFallback: false,
-});
 
 const sans = Inter({
   subsets: ["latin"],
@@ -46,7 +37,7 @@ export default function RootLayout({
   return (
     <html
       lang="zh-CN"
-      className={`${serif.variable} ${sans.variable} ${mono.variable}`}
+      className={`${sans.variable} ${mono.variable}`}
     >
       <body>
         <div className="app">

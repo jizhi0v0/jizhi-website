@@ -34,7 +34,7 @@
 }
 
 :root {
-  --font-serif: var(--font-noto-serif-sc), "Noto Serif SC", "Songti SC", "Source Han Serif SC", Georgia, serif;
+  --font-serif: "Songti SC", "STSong", "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC", "Noto Serif SC", Georgia, "Times New Roman", serif;
   --font-sans: var(--font-inter), "Inter", -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
   --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", "SF Mono", Menlo, monospace;
 }
