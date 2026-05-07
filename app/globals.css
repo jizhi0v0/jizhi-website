@@ -197,6 +197,24 @@ hr {
   margin: 0;
   padding: 0 0 80px;
 }
+
+/* Empty home — intro 单独居中 */
+.home-empty {
+  min-height: calc(100vh - 320px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 32px 80px;
+}
+.home-empty-line {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+  font-style: italic;
+  margin: 0;
+  text-align: center;
+}
 .post-row {
   display: grid;
   grid-template-columns: 92px 1fr;
