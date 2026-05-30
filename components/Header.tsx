@@ -5,10 +5,22 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 
 const NAV = [
-  { href: "/", label: "文章", match: (p: string) => p === "/" || p.startsWith("/posts") },
-  { href: "/archive", label: "归档", match: (p: string) => p.startsWith("/archive") },
+  {
+    href: "/",
+    label: "文章",
+    match: (p: string) => p === "/" || p.startsWith("/posts"),
+  },
+  {
+    href: "/archive",
+    label: "归档",
+    match: (p: string) => p.startsWith("/archive"),
+  },
   { href: "/tags", label: "标签", match: (p: string) => p.startsWith("/tags") },
-  { href: "/about", label: "关于", match: (p: string) => p.startsWith("/about") },
+  {
+    href: "/about",
+    label: "关于",
+    match: (p: string) => p.startsWith("/about"),
+  },
 ];
 
 export function Header() {
