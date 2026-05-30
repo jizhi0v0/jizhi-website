@@ -17,11 +17,22 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://www.jizhiovo.com"),
   title: {
     default: "jizhi0v0 / keep_thinking",
     template: "%s · jizhi0v0",
   },
   description: "一个写得不勤、但还在写的小角落。",
+  openGraph: {
+    type: "website",
+    siteName: "jizhi0v0 / keep_thinking",
+    locale: "zh_CN",
+    url: "/",
+    images: ["/og/default.png"],
+  },
+  twitter: {
+    card: "summary",
+  },
 };
 
 export const viewport: Viewport = {

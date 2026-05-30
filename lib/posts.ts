@@ -11,6 +11,7 @@ export interface PostMeta {
   excerpt: string;
   words: number;
   readMinutes: number;
+  image?: string; // 社交分享图（og:image），不填走全站兜底
 }
 
 export interface Post extends PostMeta {
@@ -52,6 +53,7 @@ function toMeta(slug: string, raw: string): PostMeta & { content: string } {
     excerpt: String(data.excerpt ?? ""),
     words,
     readMinutes,
+    image: data.image ? String(data.image) : undefined,
     content,
   };
 }
