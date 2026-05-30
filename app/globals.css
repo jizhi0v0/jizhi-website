@@ -354,6 +354,16 @@ hr {
   margin: 0;
 }
 
+/* MDX 图片：UI 截图，限个宽度上限避免 retina 原图撑满正文 */
+.post-body .post-img {
+  display: block;
+  max-width: min(100%, 540px);
+  height: auto;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  margin: 1.2em 0;
+}
+
 /* code */
 .post-body pre {
   background: var(--code-bg);

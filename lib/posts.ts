@@ -30,6 +30,14 @@ function countWords(content: string): number {
   return cn + en;
 }
 
+// YAML 会把未加引号的 2026-05-30 解析成 Date 对象，String() 会得到
+// "Sat May 30 2026 ..." 这种长格式，导致 formatFull 按 "-" 切分时算出 NaN。
+// 这里统一归一成 YYYY-MM-DD，无论 frontmatter 写没写引号都不会出错。
+function normalizeDate(value: unknown): string {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value ?? "").slice(0, 10);
+}
+
 function toMeta(slug: string, raw: string): PostMeta & { content: string } {
   const { data, content } = matter(raw);
   const words = countWords(content);
@@ -38,7 +46,7 @@ function toMeta(slug: string, raw: string): PostMeta & { content: string } {
   return {
     slug,
     title: String(data.title ?? slug),
-    date: String(data.date ?? ""),
+    date: normalizeDate(data.date),
     category: String(data.category ?? ""),
     tags: Array.isArray(data.tags) ? data.tags.map(String) : [],
     excerpt: String(data.excerpt ?? ""),

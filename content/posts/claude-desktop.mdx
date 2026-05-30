@@ -1,0 +1,28 @@
+---
+title: 转向 Claude Desktop
+date: 2026-05-30
+category: 工具
+tags: [Claude, 工作流, 效率]
+excerpt: 更好的 Claude Code 使用体验
+---
+
+Desktop spawn 的 Claude Code 二进制版本是固定的，跟随 Desktop 版本，而不是追求最新版本，比较克制，通常会有更好的配合，例如 1.9659.2 绑定 2.1.156 版本，修复 Opus 4.8 thinking blocks 被改写导致的 API 报错。
+
+- Desktop 自带 Chat & Code 的 need input / need review 通知 & 指示灯，无缝衔接切换本地 & 云端 & SSH 会话，而无需使用第三方 app 进行会话管理和跳转。
+
+  ![Desktop 会话列表中的待办指示灯](/posts/claude-desktop/sessions.png)
+- Terminal 和 IDE 分离，你同样可以在 Desktop 进行 diff review，甚至编辑文件。TUI 能做的事 Desktop 中都能做到。现在 auto mode 已推出，IDE 更多是一个纯粹的编辑器。
+
+  ![Desktop 内置的 Preview / Diff / Terminal / Files 面板](/posts/claude-desktop/panel.png)
+
+  ![会话菜单 Open in：VS Code / Zed / Cloud / Finder](/posts/claude-desktop/open-in.png)
+- Code 会话可以更轻松看见 usage / context，而无需打断当前对话。
+
+  ![Context window 与 Plan usage 面板](/posts/claude-desktop/usage.png)
+- 不用忍受 TUI 的各种闪烁，更好的滚动体验，更好的视图。
+- Chat 和 Code 通过 tab 切换，而无需在网页和 TUI 之间来回切换。
+- 切换分支、开启 Worktree、Create PR 都在 Desktop 里完成，不用再在 IDE 或 Terminal 之间切换。
+
+虽然现在 Desktop 还有一些 bug，通常可以忍受，再迭代几个版本应该会更丝滑。
+1. Computer use 体验远不如 Codex
+2. Desktop 启动 & 使用过程中弹 CF 验证
