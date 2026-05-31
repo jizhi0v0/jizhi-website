@@ -75,7 +75,7 @@ test.describe("刷新后的文章滚动恢复", () => {
     expect(restored.preTop).toBeGreaterThan(0);
   });
 
-  test("移动端使用 fixed 头部，meta 栏停在其下方", async ({ page }) => {
+  test("移动端使用 fixed 头部和文章 meta 栏", async ({ page }) => {
     await page.goto(POST_ROUTE, { waitUntil: "domcontentloaded" });
 
     const styles = await page.evaluate(() => {
@@ -89,6 +89,9 @@ test.describe("刷新后的文章滚动恢复", () => {
         metaPosition: getComputedStyle(meta).position,
         metaTop: getComputedStyle(meta).top,
         mainPaddingTop: getComputedStyle(main).paddingTop,
+        articlePaddingTop: getComputedStyle(
+          document.querySelector(".post-article")!,
+        ).paddingTop,
         h2ScrollMargin: getComputedStyle(document.documentElement)
           .getPropertyValue("--h2-scroll-margin")
           .trim(),
@@ -96,8 +99,9 @@ test.describe("刷新后的文章滚动恢复", () => {
     });
 
     expect(styles.headerPosition).toBe("fixed");
-    expect(styles.metaPosition).toBe("sticky");
+    expect(styles.metaPosition).toBe("fixed");
     expect(styles.metaTop).toBe(styles.mainPaddingTop);
+    expect(styles.articlePaddingTop).toBe("82px");
     expect(styles.h2ScrollMargin).toBe("200px");
   });
 });

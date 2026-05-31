@@ -38,6 +38,7 @@
   --font-sans: var(--font-inter), "Inter", -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
   --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", "SF Mono", Menlo, monospace;
   --mobile-header-height: 116px;
+  --mobile-post-meta-height: 82px;
 
   /* h2 点击/锚点跳转后的停靠位置（避开 sticky 头部）。TOC 高亮的「阅读线」
      在 Toc.tsx 里运行时读取这个变量推导，确保两者永远同步——避免「改了
@@ -856,13 +857,22 @@ hr {
     margin-left: 4px;
   }
 
-  /* Sticky offsets shrink to match shorter header */
+  /* Fixed offsets shrink to match shorter mobile chrome */
   .app-main {
     padding-top: var(--mobile-header-height);
   }
+  .post-article {
+    padding-top: var(--mobile-post-meta-height);
+  }
   .post-meta-bar {
+    position: fixed;
     top: var(--mobile-header-height);
+    left: 32px;
+    right: 32px;
     padding: 16px 0 14px;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
+    clip-path: inset(0 -100vw 0 -100vw);
   }
   .post-meta-bar .back-link {
     margin-bottom: 10px;
