@@ -864,19 +864,6 @@ hr {
   .post-article {
     padding-top: var(--mobile-post-meta-height);
   }
-  .post-article::before {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: calc(var(--mobile-header-height) + var(--mobile-post-meta-height) + 1px);
-    background: var(--paper);
-    pointer-events: none;
-    z-index: 9;
-    transform: translate3d(0, 0, 0);
-    backface-visibility: hidden;
-  }
   .post-meta-bar {
     position: fixed;
     top: var(--mobile-header-height);
@@ -885,6 +872,7 @@ hr {
     padding: 16px 0 14px;
     transform: translate3d(0, 0, 0);
     backface-visibility: hidden;
+    will-change: transform;
     clip-path: inset(0 -100vw 0 -100vw);
   }
   .post-meta-bar .back-link {

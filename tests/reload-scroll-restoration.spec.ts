@@ -92,15 +92,8 @@ test.describe("刷新后的文章滚动恢复", () => {
         articlePaddingTop: getComputedStyle(
           document.querySelector(".post-article")!,
         ).paddingTop,
-        shieldHeight: getComputedStyle(
-          document.querySelector(".post-article")!,
-          "::before",
-        ).height,
-        shieldZIndex: getComputedStyle(
-          document.querySelector(".post-article")!,
-          "::before",
-        ).zIndex,
         metaZIndex: getComputedStyle(meta).zIndex,
+        metaWillChange: getComputedStyle(meta).willChange,
         h2ScrollMargin: getComputedStyle(document.documentElement)
           .getPropertyValue("--h2-scroll-margin")
           .trim(),
@@ -111,8 +104,8 @@ test.describe("刷新后的文章滚动恢复", () => {
     expect(styles.metaPosition).toBe("fixed");
     expect(styles.metaTop).toBe(styles.mainPaddingTop);
     expect(styles.articlePaddingTop).toBe("82px");
-    expect(parseFloat(styles.shieldHeight)).toBeGreaterThan(198);
-    expect(Number(styles.shieldZIndex)).toBeLessThan(Number(styles.metaZIndex));
+    expect(Number(styles.metaZIndex)).toBeGreaterThan(0);
+    expect(styles.metaWillChange).toContain("transform");
     expect(styles.h2ScrollMargin).toBe("200px");
   });
 });
