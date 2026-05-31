@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono, Noto_Serif_SC } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Header } from "@/components/Header";
@@ -16,6 +16,15 @@ const mono = JetBrains_Mono({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-jetbrains-mono",
+});
+
+// CJK 字体被切成上百个文件，必须 preload:false（否则全量预载），
+// 此时 font-display 默认 swap，浏览器只按 unicode-range 拉用到的切片。
+const serif = Noto_Serif_SC({
+  weight: ["400", "600", "700"],
+  display: "swap",
+  preload: false,
+  variable: "--font-noto-serif-sc",
 });
 
 export const metadata: Metadata = {
@@ -50,7 +59,7 @@ export default function RootLayout({
   return (
     <html
       lang="zh-CN"
-      className={`${sans.variable} ${mono.variable}`}
+      className={`${sans.variable} ${mono.variable} ${serif.variable}`}
     >
       <body>
         <div className="app">
