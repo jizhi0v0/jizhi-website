@@ -17,12 +17,27 @@ Desktop spawn 的 Claude Code 二进制版本是固定的，跟随 Desktop 版�
   ![Desktop 内置的 Preview / Diff / Terminal / Files 面板](/posts/turn-to-claude-desktop/panel.png)
 
   ![会话菜单 Open in：VS Code / Zed / Cloud / Finder](/posts/turn-to-claude-desktop/open-in.png)
-- Code 会话可以更轻松看见 usage / context，而无需打断当前对话。
+- Code 会话可以更轻松看见 usage / context，切换模型 / effort，而无需打断当前对话。
 
   ![Context window 与 Plan usage 面板](/posts/turn-to-claude-desktop/usage.png)
 - 不用忍受 TUI 的各种闪烁，更好的滚动体验，更好的视图。
 - Chat 和 Code 通过 tab 切换，而无需在网页和 TUI 之间来回切换。
 - 切换分支、开启 Worktree、Create PR 都在 Desktop 里完成，不用再在 IDE 或 Terminal 之间切换。
+
+终端的肌肉记忆一时改不掉，过渡期放了个小函数，从当前目录直接拉起一个 Desktop 新会话：
+
+```bash
+clauded() {
+  local url="claude://code/new?folder=$(pwd)"
+  [ -n "$1" ] && url="${url}&q=$(python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))' "$*")"
+  open "$url"
+}
+
+# clauded            在当前目录开个空会话
+# clauded "Fix X"    顺带带上第一句提问
+```
+
+`folder` 取 `pwd`，所以在哪个项目目录敲，就在哪个项目里开会话——和以前在终端里 `claude` 的手感几乎一样。
 
 虽然现在 Desktop 还有一些 bug，通常可以忍受，再迭代几个版本应该会更丝滑。
 1. Computer use 体验远不如 Codex
