@@ -89,6 +89,12 @@ export default function RootLayout({
           <main className="app-main">{children}</main>
           <Footer />
         </div>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var n=performance.getEntriesByType('navigation')[0]?.type;if(n==='reload'||n==='back_forward'){var k='jizhi:scroll:'+location.pathname+location.search;var s=JSON.parse(sessionStorage.getItem(k)||'null');if(s&&typeof s.x==='number'&&typeof s.y==='number'&&typeof s.t==='number'&&Date.now()-s.t<18e5){scrollTo(s.x,Math.min(s.y,Math.max(0,document.documentElement.scrollHeight-document.documentElement.clientHeight)))}}}catch(e){}",
+          }}
+        />
         <Analytics />
         <SpeedInsights />
       </body>

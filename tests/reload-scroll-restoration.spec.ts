@@ -47,8 +47,8 @@ test.describe("刷新后的文章滚动恢复", () => {
     await page.reload({ waitUntil: "domcontentloaded" });
 
     await expect
-      .poll(() => page.evaluate(() => window.scrollY), { timeout: 500 })
-      .toBeLessThan(80);
+      .poll(() => page.evaluate(() => window.scrollY), { timeout: 1_000 })
+      .toBeGreaterThan(targetY - 2);
 
     await page.waitForLoadState("load");
     await expect
@@ -73,5 +73,26 @@ test.describe("刷新后的文章滚动恢复", () => {
     expect(restored.naturalWidth).toBeGreaterThan(0);
     expect(restored.imageTop).toBeLessThan(0);
     expect(restored.preTop).toBeGreaterThan(0);
+  });
+
+  test("移动端保留 sticky 头部", async ({ page }) => {
+    await page.goto(POST_ROUTE, { waitUntil: "domcontentloaded" });
+
+    const styles = await page.evaluate(() => {
+      const header = document.querySelector(".site-header");
+      const meta = document.querySelector(".post-meta-bar");
+      if (!header || !meta) throw new Error("sticky elements not found");
+      return {
+        headerPosition: getComputedStyle(header).position,
+        metaPosition: getComputedStyle(meta).position,
+        h2ScrollMargin: getComputedStyle(document.documentElement)
+          .getPropertyValue("--h2-scroll-margin")
+          .trim(),
+      };
+    });
+
+    expect(styles.headerPosition).toBe("sticky");
+    expect(styles.metaPosition).toBe("sticky");
+    expect(styles.h2ScrollMargin).toBe("200px");
   });
 });
