@@ -466,12 +466,6 @@ hr {
   background: var(--ink);
   width: 0%;
 }
-/* Telegram 内嵌浏览器（靠 layout 注入的 .tg-webview 标识，见 TelegramWebviewProxy
-   检测）：其半透明顶栏下，这条 top:0 的固定进度条与透出的正文叠在一起显得突兀，
-   且 Telegram 自带加载进度条，故在该环境隐藏自绘进度条。Safari 等正常浏览器不受影响。 */
-.tg-webview .read-progress {
-  display: none;
-}
 
 /* ===== TOC sidebar ===== */
 .toc {
@@ -808,9 +802,8 @@ hr {
 /* ===== Responsive (narrow viewports) ===== */
 @media (max-width: 640px) {
   :root {
-    /* 移动端不再 sticky（见下方 .site-header / .post-meta-bar position:static），
-       没有固定头要避让，h2 锚点跳转只留小间距即可。 */
-    --h2-scroll-margin: 24px;
+    /* 头部更矮，h2 停靠位置随之上移（TOC 在此宽度不显示，纯为锚点跳转） */
+    --h2-scroll-margin: 200px;
   }
   .container,
   .container-wide {
@@ -818,10 +811,6 @@ hr {
   }
   .site-header {
     padding: 28px 0 20px;
-    /* iOS in-app 浏览器（Telegram 等 WKWebView）对 sticky/fixed + 半透明顶栏
-       有渲染错位 bug，导致固定头与顶栏重叠、正文透底。移动端改 static，让头部
-       随内容正常滚走（非固定站点无此问题）；桌面保留 sticky。 */
-    position: static;
   }
   .site-header-inner {
     padding-bottom: 16px;
@@ -854,10 +843,9 @@ hr {
     margin-left: 4px;
   }
 
-  /* 移动端随头部一起不 sticky（见 .site-header），meta 栏跟随内容滚动；
-     不再有内容从其身后滚过，故全宽出血背景（box-shadow）在此为纸色盖纸色、无副作用。 */
+  /* Sticky offsets shrink to match shorter header */
   .post-meta-bar {
-    position: static;
+    top: 100px;
     padding: 16px 0 14px;
   }
   .post-meta-bar .back-link {
@@ -915,4 +903,26 @@ hr {
   .nav-link {
     font-size: 12.5px;
   }
+}
+
+/* ===== Telegram 内嵌浏览器定向收尾 ===== */
+/* Telegram iOS 内嵌浏览器（WKWebView）UA 伪装成 Safari、不带标识（见 Telegram-iOS
+   issue #736），但在 atDocumentStart 注入 window.TelegramWebviewProxy
+   （submodules/BrowserUI/BrowserWebContent.swift）——layout 内联脚本据此给 <html>
+   打 .tg-webview。该 webview 对 sticky/fixed + 半透明顶栏有渲染错位 bug：固定头与
+   顶栏重叠、正文透底。故仅在此环境把头部/meta 栏改 static（随内容滚走、规避 bug）、
+   收小锚点停靠间距、并隐藏自绘进度条（Telegram 自带加载条，叠在透出的正文上显突兀）。
+   Safari / 微信等无此对象 → 完全不命中，固定头与进度条照常。
+   置于文件末尾：--h2-scroll-margin 覆盖需在 @media 之后才能按源码顺序胜出。 */
+.tg-webview {
+  --h2-scroll-margin: 24px;
+}
+.tg-webview .site-header {
+  position: static;
+}
+.tg-webview .post-meta-bar {
+  position: static;
+}
+.tg-webview .read-progress {
+  display: none;
 }
