@@ -51,6 +51,12 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // 给浏览器 chrome（含 Telegram/微信等 in-app 浏览器的顶栏）上色：不设时
+  // 顶栏退化成半透明模糊，滚动的正文会从顶栏后透出来。取值 = body 背景实际渲染色。
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fcfaf6" },
+    { media: "(prefers-color-scheme: dark)", color: "#13110f" },
+  ],
 };
 
 export default function RootLayout({
