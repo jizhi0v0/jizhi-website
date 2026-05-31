@@ -949,11 +949,28 @@ hr {
 .tg-webview {
   --h2-scroll-margin: 24px;
 }
+.tg-webview .app-main {
+  padding-top: 0;
+}
 .tg-webview .site-header {
   position: static;
+  height: auto;
+  transform: none;
+  backface-visibility: visible;
+}
+.tg-webview .post-article {
+  padding-top: 0;
 }
 .tg-webview .post-meta-bar {
   position: static;
+  top: auto;
+  left: auto;
+  right: auto;
+  z-index: 10;
+  transform: none;
+  backface-visibility: visible;
+  will-change: auto;
+  isolation: auto;
 }
 .tg-webview .read-progress {
   display: none;

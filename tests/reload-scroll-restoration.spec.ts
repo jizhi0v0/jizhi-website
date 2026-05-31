@@ -116,4 +116,40 @@ test.describe("刷新后的文章滚动恢复", () => {
     expect(styles.metaRect.width).toBe(styles.viewportWidth);
     expect(styles.h2ScrollMargin).toBe("200px");
   });
+
+  test("Telegram WebView 回退 static 时不保留 fixed 占位", async ({ page }) => {
+    await page.goto(POST_ROUTE, { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => {
+      document.documentElement.classList.add("tg-webview");
+    });
+
+    const styles = await page.evaluate(() => {
+      const header = document.querySelector(".site-header");
+      const meta = document.querySelector(".post-meta-bar");
+      const main = document.querySelector(".app-main");
+      const article = document.querySelector(".post-article");
+      if (!header || !meta || !main || !article) {
+        throw new Error("layout elements not found");
+      }
+      return {
+        headerPosition: getComputedStyle(header).position,
+        headerHeight: getComputedStyle(header).height,
+        metaPosition: getComputedStyle(meta).position,
+        metaWillChange: getComputedStyle(meta).willChange,
+        mainPaddingTop: getComputedStyle(main).paddingTop,
+        articlePaddingTop: getComputedStyle(article).paddingTop,
+        h2ScrollMargin: getComputedStyle(document.documentElement)
+          .getPropertyValue("--h2-scroll-margin")
+          .trim(),
+      };
+    });
+
+    expect(styles.headerPosition).toBe("static");
+    expect(styles.metaPosition).toBe("static");
+    expect(styles.metaWillChange).toBe("auto");
+    expect(styles.mainPaddingTop).toBe("0px");
+    expect(styles.articlePaddingTop).toBe("0px");
+    expect(styles.headerHeight).not.toBe("116px");
+    expect(styles.h2ScrollMargin).toBe("24px");
+  });
 });
