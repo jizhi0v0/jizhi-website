@@ -75,24 +75,29 @@ test.describe("刷新后的文章滚动恢复", () => {
     expect(restored.preTop).toBeGreaterThan(0);
   });
 
-  test("移动端保留 sticky 头部", async ({ page }) => {
+  test("移动端使用 fixed 头部，meta 栏停在其下方", async ({ page }) => {
     await page.goto(POST_ROUTE, { waitUntil: "domcontentloaded" });
 
     const styles = await page.evaluate(() => {
       const header = document.querySelector(".site-header");
       const meta = document.querySelector(".post-meta-bar");
+      const main = document.querySelector(".app-main");
       if (!header || !meta) throw new Error("sticky elements not found");
+      if (!main) throw new Error("main not found");
       return {
         headerPosition: getComputedStyle(header).position,
         metaPosition: getComputedStyle(meta).position,
+        metaTop: getComputedStyle(meta).top,
+        mainPaddingTop: getComputedStyle(main).paddingTop,
         h2ScrollMargin: getComputedStyle(document.documentElement)
           .getPropertyValue("--h2-scroll-margin")
           .trim(),
       };
     });
 
-    expect(styles.headerPosition).toBe("sticky");
+    expect(styles.headerPosition).toBe("fixed");
     expect(styles.metaPosition).toBe("sticky");
+    expect(styles.metaTop).toBe(styles.mainPaddingTop);
     expect(styles.h2ScrollMargin).toBe("200px");
   });
 });

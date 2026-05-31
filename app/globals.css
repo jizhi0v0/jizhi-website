@@ -37,6 +37,7 @@
   --font-serif: var(--font-noto-serif-sc), "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC", "Songti SC", "STSong", Georgia, "Times New Roman", serif;
   --font-sans: var(--font-inter), "Inter", -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
   --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", "SF Mono", Menlo, monospace;
+  --mobile-header-height: 116px;
 
   /* h2 点击/锚点跳转后的停靠位置（避开 sticky 头部）。TOC 高亮的「阅读线」
      在 Toc.tsx 里运行时读取这个变量推导，确保两者永远同步——避免「改了
@@ -106,9 +107,6 @@ hr {
   top: 0;
   background: var(--paper);
   z-index: 20;
-  /* iOS WebKit 下 sticky 元素在滚动恢复/快速滚动时偶尔晚一帧重绘。
-     提升到独立合成层，配合首帧前的手动滚动恢复，保留移动端 sticky。 */
-  transform: translateZ(0);
 }
 .site-header-inner {
   display: flex;
@@ -816,7 +814,16 @@ hr {
     padding: 0 20px;
   }
   .site-header {
+    position: fixed;
+    left: 0;
+    right: 0;
+    height: var(--mobile-header-height);
+    box-sizing: border-box;
     padding: 28px 0 20px;
+    /* iOS Safari 刷新时会偶发漏画 sticky 首帧；移动端顶栏改 fixed，避开 sticky
+       的首帧重算，同时保持与原 sticky 顶栏相同的常驻体验。 */
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
   }
   .site-header-inner {
     padding-bottom: 16px;
@@ -850,8 +857,11 @@ hr {
   }
 
   /* Sticky offsets shrink to match shorter header */
+  .app-main {
+    padding-top: var(--mobile-header-height);
+  }
   .post-meta-bar {
-    top: 100px;
+    top: var(--mobile-header-height);
     padding: 16px 0 14px;
   }
   .post-meta-bar .back-link {
@@ -860,7 +870,7 @@ hr {
   /* h2 的 scroll-margin-top 通过 :root 覆盖的 --h2-scroll-margin 自动重算，
      无需在此重复声明属性。 */
   .toc-inner {
-    top: 100px;
+    top: var(--mobile-header-height);
   }
 
   /* Headline / body sizes a touch smaller */
