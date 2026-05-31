@@ -7,9 +7,13 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? "github" : "list",
+  reporter: process.env.CI
+    ? [["github"], ["html", { open: "never" }]]
+    : "list",
   use: {
     baseURL: "http://localhost:3000",
+    // 仅在首次重试时录 trace：稳态零开销，挂了才有可回放的失败现场。
+    trace: "on-first-retry",
   },
   // 用 production build 跑：既贴近线上行为，又顺带把 build 当冒烟测试。
   // 本地复用已起的 dev server，CI 里每次全新构建。

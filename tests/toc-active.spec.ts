@@ -23,7 +23,7 @@ test.describe("TOC 高亮", () => {
     await page.goto(`/posts/${slug}`, { waitUntil: "networkidle" });
     const items = page.locator(".toc-item");
     await items.nth(1).click();
-    await page.waitForTimeout(120);
+    // toHaveClass 自带轮询，等高亮切换即可，无需固定 sleep
     await expect(items.nth(1)).toHaveClass(/active/);
     await expect(items.nth(0)).not.toHaveClass(/active/);
   });
@@ -33,11 +33,10 @@ test.describe("TOC 高亮", () => {
     await page.goto(`/posts/${slug}`, { waitUntil: "networkidle" });
     const id = await page.locator(".post-body h2").nth(1).getAttribute("id");
     await page.goto(`/posts/${slug}#${id}`, { waitUntil: "networkidle" });
-    await page.waitForTimeout(150);
     await expect(page.locator(".toc-item").nth(1)).toHaveClass(/active/);
   });
 
-  // bug 3：标题一越过阅读线(290)就应高亮，不滞后；尚未越过则不高亮。
+  // bug 3：标题一越过阅读线(≈290)就应高亮，不滞后；尚未越过则不高亮。
   test("第 2 标题越过阅读线即高亮，未越过则不高亮", async ({ page }) => {
     await page.goto(`/posts/${slug}`, { waitUntil: "networkidle" });
     const items = page.locator(".toc-item");
@@ -46,14 +45,12 @@ test.describe("TOC 高亮", () => {
       .nth(1)
       .evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
 
-    // 第二标题顶部 ≈250px（< 290）→ 已越线 → 高亮第 2 项
+    // 第二标题顶部 ≈250px（< 阅读线）→ 已越线 → 高亮第 2 项
     await page.evaluate((y) => window.scrollTo(0, y), absTop - 250);
-    await page.waitForTimeout(120);
     await expect(items.nth(1)).toHaveClass(/active/);
 
-    // 第二标题顶部 ≈420px（> 290）→ 未越线 → 不应高亮第 2 项
+    // 第二标题顶部 ≈420px（> 阅读线）→ 未越线 → 不应高亮第 2 项
     await page.evaluate((y) => window.scrollTo(0, y), absTop - 420);
-    await page.waitForTimeout(120);
     await expect(items.nth(1)).not.toHaveClass(/active/);
   });
 });
