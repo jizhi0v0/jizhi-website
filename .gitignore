@@ -6,6 +6,7 @@ out/
 .env*.local
 .vercel
 .zed/
+.claude/
 next-env.d.ts
 
 # Playwright

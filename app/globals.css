@@ -55,6 +55,20 @@ html, body {
   -webkit-font-smoothing: antialiased;
   margin: 0;
   padding: 0;
+  /* 约束竖向滚动时 GPU 合成层的右边界：iOS Safari/WKWebView 在 sticky header
+     + 长页面快速滚动时，子层（sticky/fixed/promoted img）的合成层栅格化范围有时
+     比 viewport 多出 1px 亚像素，露出底下 WKWebView 的 clearColor（黑），表现
+     为「右侧贴边一条黑线，跟着滚动出现/消失」。overflow-x:clip 强制硬切到视口，
+     既不创建新滚动容器（hidden 会、影响 sticky），又关掉横向合成 slack。 */
+  overflow-x: clip;
+}
+
+/* iOS Safari pull-to-refresh 在还原滚动位置之前，先用 visibility:hidden 屏掉
+   .app 这一帧——避免出现「跳回顶部 → 再跳回原位」的两帧抖动。
+   visibility 保留布局（不像 display:none 会丢图片占位 / 触发回流），还原
+   完成后 lib/scroll-restore.ts 拆掉属性即可。 */
+html[data-restoring] .app {
+  visibility: hidden;
 }
 
 ::selection {
