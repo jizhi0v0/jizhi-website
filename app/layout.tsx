@@ -51,7 +51,49 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  /* Telegram / 其他 in-app WKWebView 的半透明工具栏会读取 theme-color 作为
+     顶部栏底色。缺省时工具栏透明，页面正文透出来显得脏。匹配 --paper 的 oklch
+     值（浏览器会做色彩空间转换），light/dark 各给一个。 */
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fcfaf6" },
+    { media: "(prefers-color-scheme: dark)", color: "#13110f" },
+  ],
 };
+
+/* iOS Safari 刷新时的滚动恢复脚本——以内联 <script> 注入 <body> 最顶部，
+   在 .app 渲染前执行，来得及遮挡闪烁中间态。
+   流程：beforeunload 存位置 → 重载时立即接管 scrollRestoration、隐藏
+   内容层 → DOM ready 后恢复位置 → 揭幕。整段做成字符串常量供
+   dangerouslySetInnerHTML 使用（next/script beforeInteractive 在 App Router
+   中走 RSC payload、hydration 后才执行，来不及）。 */
+const SCROLL_RESTORE_SCRIPT = `(function(){
+  try {
+    if(history.scrollRestoration) history.scrollRestoration='manual';
+    var k='__sr',s=sessionStorage,v=s.getItem(k);
+    if(v){
+      /* 同一个 pathname 才恢复——切页不误跳 */
+      var o=JSON.parse(v);
+      if(o.p===location.pathname){
+        document.documentElement.classList.add('sr-loading');
+        var done=function(){
+          window.scrollTo(0,o.y);
+          /* rAF 确保滚动生效后再揭幕，避免一帧白屏 */
+          requestAnimationFrame(function(){
+            document.documentElement.classList.remove('sr-loading');
+          });
+        };
+        if(document.readyState==='loading'){
+          document.addEventListener('DOMContentLoaded',done);
+        } else { done(); }
+      }
+      s.removeItem(k);
+    }
+    window.addEventListener('beforeunload',function(){
+      if(window.scrollY>0) s.setItem(k,JSON.stringify({p:location.pathname,y:window.scrollY}));
+      else s.removeItem(k);
+    });
+  }catch(e){}
+})()`;
 
 export default function RootLayout({
   children,
@@ -64,6 +106,7 @@ export default function RootLayout({
       className={`${sans.variable} ${mono.variable} ${serif.variable}`}
     >
       <body>
+        <script dangerouslySetInnerHTML={{ __html: SCROLL_RESTORE_SCRIPT }} />
         <div className="app">
           <Header />
           <main className="app-main">{children}</main>

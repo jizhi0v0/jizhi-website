@@ -55,6 +55,15 @@ html, body {
   -webkit-font-smoothing: antialiased;
   margin: 0;
   padding: 0;
+  /* iOS WebKit 惯性滚动时，compositing 层边缘可能出现 1px 缝隙，
+     在深色图片旁尤其明显（表现为右侧一条黑线）。clip 掉水平溢出消除。 */
+  overflow-x: clip;
+}
+
+/* iOS Safari pull-to-refresh 时的滚动恢复遮挡：隐藏内容层（保留背景色），
+   由 layout.tsx 的内联脚本在恢复完成后移除此 class，避免闪过中间态。 */
+html.sr-loading .app {
+  visibility: hidden;
 }
 
 ::selection {
