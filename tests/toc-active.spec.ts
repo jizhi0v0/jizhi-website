@@ -66,4 +66,17 @@ test.describe("TOC 高亮", () => {
     // 首屏须带 data-spy="off"：配合 CSS 把无 active 的目录提到可读色，否则首屏全暗 broken。
     expect(html).toMatch(/class="toc"[^>]*data-spy="off"/);
   });
+
+  // bug 5：.post-meta-bar 用 box-shadow 0 0 0 100vw 把纸色背景向左右各延伸一屏遮身后正文，
+  // 这层背景会盖到左 gutter 的 TOC 上、把目录涂成背景色（表现为「目录被遮挡」）。TOC 的
+  // z-index 必须高于 meta 栏，才能浮在那层 box-shadow 之上正常显示。
+  test("TOC 层叠高于 meta 栏，不被其全宽 box-shadow 遮挡", async ({ page }) => {
+    await page.goto(`/posts/${slug}`, { waitUntil: "domcontentloaded" });
+    const z = await page.evaluate(() => {
+      const zi = (sel: string) =>
+        parseInt(getComputedStyle(document.querySelector(sel)!).zIndex, 10);
+      return { toc: zi(".toc"), meta: zi(".post-meta-bar") };
+    });
+    expect(z.toc).toBeGreaterThan(z.meta);
+  });
 });

@@ -479,7 +479,10 @@ hr {
   color: var(--ink-3);
   line-height: 1.7;
   display: none;
-  z-index: 5;
+  /* 必须高于 .post-meta-bar(z-index:10)：后者用 box-shadow 0 0 0 100vw 把纸色背景向
+     左右各延伸一屏来遮身后滚动的正文，这层背景会盖到左 gutter 里的 TOC 上、把目录文字
+     涂成背景色（表现为「目录被遮挡」）。TOC 与 meta 栏内容 x 不重叠，提到其上不挡 meta 栏。 */
+  z-index: 15;
 }
 .toc-inner {
   position: sticky;
