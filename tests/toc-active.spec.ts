@@ -53,4 +53,15 @@ test.describe("TOC 高亮", () => {
     await page.evaluate((y) => window.scrollTo(0, y), absTop - 420);
     await expect(items.nth(1)).not.toHaveClass(/active/);
   });
+
+  // bug 4：SSR/预渲染 HTML 不得预置任何 active。否则浏览器首绘（早于 hydration 与
+  // useLayoutEffect）即把第一项画成高亮，刷新到中段会闪一下第一项——纯客户端断言
+  // （toHaveClass 轮询最终态）抓不到这一帧，故直接校验服务端产物。
+  test("SSR HTML 不预置任何 active 高亮", async ({ request }) => {
+    const html = await (await request.get(`/posts/${slug}`)).text();
+    expect(html).toContain('class="toc-item'); // 确认 TOC 确实渲染进了首屏 HTML
+    // 只校验 toc-item 自身的 class 属性内不含 active；用 class="toc-item…active 收紧，
+    // 避免误命中 Header 的 nav-link active 等无关高亮。
+    expect(html).not.toMatch(/class="toc-item[^"]*active/);
+  });
 });

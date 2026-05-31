@@ -22,12 +22,16 @@ function readActiveLine() {
 }
 
 // useLayoutEffect 在 SSR 会告警；客户端用 layout 版本，使挂载时的 compute 在首帧前
-// 完成定位，消除“刷新到中段先闪第一项”。
+// 定位到正确章节。注意：仅此不足以消除“刷新到中段先闪第一项”——SSR HTML 的首绘早于
+// hydration 与本 effect，根除闪烁靠下方 activeId 初始值为 null（见该处注释）。
 const useIsoLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 export function Toc({ items }: { items: TocItem[] }) {
-  const [activeId, setActiveId] = useState<string | null>(items[0]?.id ?? null);
+  // 初始不预设高亮：SSR/预渲染 HTML 会按此初始值落地，若为 items[0] 则首屏 HTML 第一项
+  // 就带 .active，浏览器首绘（早于 hydration 与 useLayoutEffect）即闪一下第一项。必须为
+  // null——让 SSR HTML 不含任何 active，再由下方 effect 在首帧前补上当前章节。
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   useIsoLayoutEffect(() => {
     if (items.length === 0) return;
