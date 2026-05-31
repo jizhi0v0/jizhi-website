@@ -12,22 +12,53 @@ export function Toc({ items }: { items: TocItem[] }) {
 
   useEffect(() => {
     if (items.length === 0) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) {
-            setActiveId(e.target.id);
-            break;
-          }
+
+    // 基于滚动位置计算 active：取「最后一个顶部已越过阈值线的标题」。
+    // IntersectionObserver 只在标题落入窄带时触发，触底刷新时所有标题都在带上方、
+    // 回调不会被调用，导致 activeId 停在初始的第一项——这里改为直接按位置判定。
+    // items 在 effect 生命周期内稳定，元素引用缓存一次，避免每帧重复 getElementById。
+    const els = items.map((it) => document.getElementById(it.id));
+
+    const compute = () => {
+      const viewport = window.innerHeight;
+      const docHeight = document.documentElement.scrollHeight;
+      // 触底时强制高亮最后一项（末节常短于一屏，进不了阈值线以上的判定）。
+      // 必须先确认文档真的溢出视口，否则短页面 scrollHeight≈innerHeight 会从一开始就误判触底、
+      // 让顶部也高亮最后一项。
+      const atBottom =
+        docHeight > viewport && viewport + window.scrollY >= docHeight - 2;
+      if (atBottom) {
+        setActiveId(items[items.length - 1].id);
+        return;
+      }
+      const threshold = viewport * 0.2;
+      let current = items[0].id;
+      for (let i = 0; i < items.length; i++) {
+        const el = els[i];
+        if (el && el.getBoundingClientRect().top <= threshold) {
+          current = items[i].id;
         }
-      },
-      { rootMargin: "-20% 0px -70% 0px" },
-    );
-    for (const it of items) {
-      const el = document.getElementById(it.id);
-      if (el) observer.observe(el);
-    }
-    return () => observer.disconnect();
+      }
+      setActiveId(current);
+    };
+
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        compute();
+        ticking = false;
+      });
+    };
+
+    compute();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
   }, [items]);
 
   if (items.length === 0) return null;
