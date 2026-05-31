@@ -848,9 +848,8 @@ hr {
   .post-meta-bar .back-link {
     margin-bottom: 10px;
   }
-  .post-body h2 {
-    scroll-margin-top: var(--h2-scroll-margin);
-  }
+  /* h2 的 scroll-margin-top 通过 :root 覆盖的 --h2-scroll-margin 自动重算，
+     无需在此重复声明属性。 */
   .toc-inner {
     top: 100px;
   }
