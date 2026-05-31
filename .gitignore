@@ -5,4 +5,5 @@ out/
 *.log
 .env*.local
 .vercel
+.zed/
 next-env.d.ts
