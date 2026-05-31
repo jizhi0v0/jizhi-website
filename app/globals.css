@@ -466,6 +466,12 @@ hr {
   background: var(--ink);
   width: 0%;
 }
+/* Telegram 内嵌浏览器（靠 layout 注入的 .tg-webview 标识，见 TelegramWebviewProxy
+   检测）：其半透明顶栏下，这条 top:0 的固定进度条与透出的正文叠在一起显得突兀，
+   且 Telegram 自带加载进度条，故在该环境隐藏自绘进度条。Safari 等正常浏览器不受影响。 */
+.tg-webview .read-progress {
+  display: none;
+}
 
 /* ===== TOC sidebar ===== */
 .toc {

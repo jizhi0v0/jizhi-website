@@ -70,6 +70,16 @@ export default function RootLayout({
       className={`${sans.variable} ${mono.variable} ${serif.variable}`}
     >
       <body>
+        {/* Telegram iOS 内嵌浏览器 UA 伪装成 Safari、无标识，但在 atDocumentStart
+            注入 window.TelegramWebviewProxy（见 Telegram-iOS submodules/BrowserUI），
+            故此脚本运行时它已存在。命中则打标，让 CSS 仅在该环境做收尾 hack；Safari
+            无此对象、零影响。内联同步执行，在首帧前打标避免闪烁。 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{if(window.TelegramWebviewProxy)document.documentElement.classList.add('tg-webview')}catch(e){}",
+          }}
+        />
         <div className="app">
           <Header />
           <main className="app-main">{children}</main>
