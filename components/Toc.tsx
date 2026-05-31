@@ -16,21 +16,27 @@ export function Toc({ items }: { items: TocItem[] }) {
     // 基于滚动位置计算 active：取「最后一个顶部已越过阈值线的标题」。
     // IntersectionObserver 只在标题落入窄带时触发，触底刷新时所有标题都在带上方、
     // 回调不会被调用，导致 activeId 停在初始的第一项——这里改为直接按位置判定。
+    // items 在 effect 生命周期内稳定，元素引用缓存一次，避免每帧重复 getElementById。
+    const els = items.map((it) => document.getElementById(it.id));
+
     const compute = () => {
-      // 触底时强制高亮最后一项（最后一节往往短于一屏，永远进不了阈值线以上的判定）
+      const viewport = window.innerHeight;
+      const docHeight = document.documentElement.scrollHeight;
+      // 触底时强制高亮最后一项（末节常短于一屏，进不了阈值线以上的判定）。
+      // 必须先确认文档真的溢出视口，否则短页面 scrollHeight≈innerHeight 会从一开始就误判触底、
+      // 让顶部也高亮最后一项。
       const atBottom =
-        window.innerHeight + window.scrollY >=
-        document.documentElement.scrollHeight - 2;
+        docHeight > viewport && viewport + window.scrollY >= docHeight - 2;
       if (atBottom) {
         setActiveId(items[items.length - 1].id);
         return;
       }
-      const threshold = window.innerHeight * 0.2;
+      const threshold = viewport * 0.2;
       let current = items[0].id;
-      for (const it of items) {
-        const el = document.getElementById(it.id);
+      for (let i = 0; i < items.length; i++) {
+        const el = els[i];
         if (el && el.getBoundingClientRect().top <= threshold) {
-          current = it.id;
+          current = items[i].id;
         }
       }
       setActiveId(current);
