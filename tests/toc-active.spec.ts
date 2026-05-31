@@ -20,7 +20,7 @@ test.describe("TOC 高亮", () => {
   // bug 1：h2 scroll-margin-top=280 落在旧阈值(viewport*0.2≈180)之下，
   // 点击第二项会错误高亮第一项。
   test("点击第 2 项高亮第 2 项，不偏移到第 1 项", async ({ page }) => {
-    await page.goto(`/posts/${slug}`, { waitUntil: "networkidle" });
+    await page.goto(`/posts/${slug}`, { waitUntil: "domcontentloaded" });
     const items = page.locator(".toc-item");
     await items.nth(1).click();
     // toHaveClass 自带轮询，等高亮切换即可，无需固定 sleep
@@ -30,15 +30,15 @@ test.describe("TOC 高亮", () => {
 
   // bug 2：刷新/直接打开到第 N 节，应稳定高亮第 N 项（旧逻辑停在第一项）。
   test("打开到第 2 节的锚点，高亮第 2 项", async ({ page }) => {
-    await page.goto(`/posts/${slug}`, { waitUntil: "networkidle" });
+    await page.goto(`/posts/${slug}`, { waitUntil: "domcontentloaded" });
     const id = await page.locator(".post-body h2").nth(1).getAttribute("id");
-    await page.goto(`/posts/${slug}#${id}`, { waitUntil: "networkidle" });
+    await page.goto(`/posts/${slug}#${id}`, { waitUntil: "domcontentloaded" });
     await expect(page.locator(".toc-item").nth(1)).toHaveClass(/active/);
   });
 
   // bug 3：标题一越过阅读线(≈290)就应高亮，不滞后；尚未越过则不高亮。
   test("第 2 标题越过阅读线即高亮，未越过则不高亮", async ({ page }) => {
-    await page.goto(`/posts/${slug}`, { waitUntil: "networkidle" });
+    await page.goto(`/posts/${slug}`, { waitUntil: "domcontentloaded" });
     const items = page.locator(".toc-item");
     const absTop = await page
       .locator(".post-body h2")

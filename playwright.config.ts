@@ -16,11 +16,12 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   // 用 production build 跑：既贴近线上行为，又顺带把 build 当冒烟测试。
-  // 本地复用已起的 dev server，CI 里每次全新构建。
+  // CI 里 build 由独立 step 完成（失败定位更快、不把 build 时长算进 webServer 超时），
+  // 这里只 start；本地不复用 dev server 时则 build && start 一把梭。
   webServer: {
-    command: "bun run build && bun run start",
+    command: process.env.CI ? "bun run start" : "bun run build && bun run start",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
+    timeout: process.env.CI ? 60_000 : 180_000,
   },
 });
