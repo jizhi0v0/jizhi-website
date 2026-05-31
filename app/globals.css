@@ -37,6 +37,11 @@
   --font-serif: var(--font-noto-serif-sc), "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC", "Songti SC", "STSong", Georgia, "Times New Roman", serif;
   --font-sans: var(--font-inter), "Inter", -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
   --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", "SF Mono", Menlo, monospace;
+
+  /* h2 点击/锚点跳转后的停靠位置（避开 sticky 头部）。TOC 高亮的「阅读线」
+     在 Toc.tsx 里运行时读取这个变量推导，确保两者永远同步——避免「改了
+     scroll-margin、判定线没跟上」的回归（见 PR #5 history）。 */
+  --h2-scroll-margin: 280px;
 }
 
 html, body {
@@ -343,7 +348,7 @@ hr {
   margin: 2em 0 0.8em;
   letter-spacing: 0.005em;
   color: var(--ink);
-  scroll-margin-top: 280px;
+  scroll-margin-top: var(--h2-scroll-margin);
 }
 .post-body .callout {
   font-family: var(--font-serif);
@@ -793,6 +798,10 @@ hr {
 
 /* ===== Responsive (narrow viewports) ===== */
 @media (max-width: 640px) {
+  :root {
+    /* 头部更矮，h2 停靠位置随之上移（TOC 在此宽度不显示，纯为锚点跳转） */
+    --h2-scroll-margin: 200px;
+  }
   .container,
   .container-wide {
     padding: 0 20px;
@@ -840,7 +849,7 @@ hr {
     margin-bottom: 10px;
   }
   .post-body h2 {
-    scroll-margin-top: 200px;
+    scroll-margin-top: var(--h2-scroll-margin);
   }
   .toc-inner {
     top: 100px;
