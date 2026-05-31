@@ -1,0 +1,77 @@
+import { test, expect } from "@playwright/test";
+
+const POST_ROUTE = "/posts/turn-to-claude-desktop";
+const SCROLL_STORAGE_PREFIX = `jizhi:scroll:${POST_ROUTE}`;
+
+test.describe("刷新后的文章滚动恢复", () => {
+  test.use({ viewport: { width: 393, height: 852 }, isMobile: true });
+
+  test("等待文章图片完成后再恢复 reload 前的滚动位置", async ({ page }) => {
+    let delayPostImages = false;
+
+    await page.route("**/posts/turn-to-claude-desktop/*.png", async (route) => {
+      if (delayPostImages) {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      }
+      await route.continue();
+    });
+
+    await page.goto(POST_ROUTE, { waitUntil: "load" });
+    await page.locator(".post-body pre").waitFor();
+
+    const targetY = await page.evaluate(() => {
+      const image = document.querySelector<HTMLImageElement>(
+        'img[src$="usage.png"]',
+      );
+      if (!image) throw new Error("usage image not found");
+      return image.getBoundingClientRect().top + window.scrollY + 120;
+    });
+
+    await page.evaluate((y) => window.scrollTo(0, y), targetY);
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeGreaterThan(targetY - 2);
+
+    await expect
+      .poll(() =>
+        page.evaluate((prefix) => {
+          const key = Object.keys(sessionStorage).find((k) =>
+            k.startsWith(prefix),
+          );
+          return key ? JSON.parse(sessionStorage.getItem(key) ?? "{}").y : 0;
+        }, SCROLL_STORAGE_PREFIX),
+      )
+      .toBeGreaterThan(targetY - 2);
+
+    delayPostImages = true;
+    await page.reload({ waitUntil: "domcontentloaded" });
+
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY), { timeout: 500 })
+      .toBeLessThan(80);
+
+    await page.waitForLoadState("load");
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY), { timeout: 2_000 })
+      .toBeGreaterThan(targetY - 2);
+
+    const restored = await page.evaluate(() => {
+      const image = document.querySelector<HTMLImageElement>(
+        'img[src$="usage.png"]',
+      );
+      const pre = document.querySelector(".post-body pre");
+      if (!image || !pre) throw new Error("article content not found");
+      return {
+        imageComplete: image.complete,
+        naturalWidth: image.naturalWidth,
+        imageTop: Math.round(image.getBoundingClientRect().top),
+        preTop: Math.round(pre.getBoundingClientRect().top),
+      };
+    });
+
+    expect(restored.imageComplete).toBe(true);
+    expect(restored.naturalWidth).toBeGreaterThan(0);
+    expect(restored.imageTop).toBeLessThan(0);
+    expect(restored.preTop).toBeGreaterThan(0);
+  });
+});
