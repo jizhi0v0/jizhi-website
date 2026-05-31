@@ -19,12 +19,14 @@ const mono = JetBrains_Mono({
 });
 
 // CJK 字体被切成 300+ 个 unicode-range 切片，必须 preload:false（否则全量预载）。
-// display:optional 而非 swap：每个切片只给 ~100ms 加载窗口，没赶上就用系统衬线
-// 兜底、且本次浏览不再 swap——避免滚动长文时切片陆续到位反复回流（CLS 元凶）。
-// 切片是 immutable 缓存，第二次浏览起即从缓存命中、立刻显示 Noto Serif SC。
+// display:swap（曾用 optional）：optional 有 ~100ms 不可见期，刷新时衬线正文与
+// 品牌字会闪一帧空白（FOIT，iOS Safari 上尤其明显）。改 swap 后文字立刻用兜底
+// 衬线显示、字体到位再换，消除 FOIT。代价是切片到位时可能回流（CLS）——靠 next/font
+// 的 adjustFontFallback（size-adjust 度量匹配）+ 字体栈里的系统衬线兜底压低；切片
+// immutable 缓存，第二次浏览起基本即时命中。CJK 度量无法 100% 匹配，CLS 以真机为准。
 const serif = Noto_Serif_SC({
   weight: ["400", "600", "700"],
-  display: "optional",
+  display: "swap",
   preload: false,
   variable: "--font-noto-serif-sc",
 });
