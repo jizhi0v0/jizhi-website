@@ -18,11 +18,13 @@ const mono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
 });
 
-// CJK 字体被切成上百个文件，必须 preload:false（否则全量预载），
-// 此时 font-display 默认 swap，浏览器只按 unicode-range 拉用到的切片。
+// CJK 字体被切成 300+ 个 unicode-range 切片，必须 preload:false（否则全量预载）。
+// display:optional 而非 swap：每个切片只给 ~100ms 加载窗口，没赶上就用系统衬线
+// 兜底、且本次浏览不再 swap——避免滚动长文时切片陆续到位反复回流（CLS 元凶）。
+// 切片是 immutable 缓存，第二次浏览起即从缓存命中、立刻显示 Noto Serif SC。
 const serif = Noto_Serif_SC({
   weight: ["400", "600", "700"],
-  display: "swap",
+  display: "optional",
   preload: false,
   variable: "--font-noto-serif-sc",
 });
