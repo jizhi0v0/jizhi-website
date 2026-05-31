@@ -63,5 +63,7 @@ test.describe("TOC 高亮", () => {
     // 只校验 toc-item 自身的 class 属性内不含 active；用 class="toc-item…active 收紧，
     // 避免误命中 Header 的 nav-link active 等无关高亮。
     expect(html).not.toMatch(/class="toc-item[^"]*active/);
+    // 首屏须带 data-spy="off"：配合 CSS 把无 active 的目录提到可读色，否则首屏全暗 broken。
+    expect(html).toMatch(/class="toc"[^>]*data-spy="off"/);
   });
 });

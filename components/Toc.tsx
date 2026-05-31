@@ -33,6 +33,12 @@ export function Toc({ items }: { items: TocItem[] }) {
   // null——让 SSR HTML 不含任何 active，再由下方 effect 在首帧前补上当前章节。
   const [activeId, setActiveId] = useState<string | null>(null);
 
+  // 首屏（SSR/未 hydration）走「可读保底」配色：此时 activeId 还是 null，若不处理则所有项
+  // 都是非 active 的暗灰、在深色底上几乎不可见，看着像目录坏了。data-spy="off" 期间 CSS 把
+  // 全部项提到可读色（既不全暗、也不闪第一项）；compute 一算出当前章节就切到 "on"，
+  // 恢复正常的「一项高亮、其余暗」层次。两个 set 在同一次 effect 同步触发，不留中间帧。
+  const [spyReady, setSpyReady] = useState(false);
+
   useIsoLayoutEffect(() => {
     if (items.length === 0) return;
 
@@ -79,6 +85,7 @@ export function Toc({ items }: { items: TocItem[] }) {
       };
 
       compute();
+      setSpyReady(true);
       window.addEventListener("scroll", onScroll, { passive: true });
       window.addEventListener("resize", onScroll, { passive: true });
       return () => {
@@ -102,7 +109,7 @@ export function Toc({ items }: { items: TocItem[] }) {
 
   if (items.length === 0) return null;
   return (
-    <aside className="toc">
+    <aside className="toc" data-spy={spyReady ? "on" : "off"}>
       <div className="toc-inner">
         <div className="toc-title">目录</div>
         {items.map((it) => (

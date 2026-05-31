@@ -525,6 +525,12 @@ hr {
   color: var(--ink);
   border-left-color: var(--ink);
 }
+/* 首屏未接管（JS 未 hydration、Toc 还没标 data-spy="on"）时的可读保底：把全部项提到
+   可读色，避免「activeId 还是 null → 所有项暗灰 → 深色底上几乎不可见」的 broken 观感。
+   一旦客户端接管（data-spy="on"），本规则不再匹配，配色完全回到上面的 ink-3/active/hover。 */
+.toc:not([data-spy="on"]) .toc-item {
+  color: var(--ink-2);
+}
 
 /* ===== About ===== */
 .about-page {
