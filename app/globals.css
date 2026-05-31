@@ -76,6 +76,11 @@ hr {
   color: var(--ink);
   display: grid;
   grid-template-rows: auto 1fr auto;
+  /* 显式约束唯一列：缺省隐式列按 max-content 收缩，会被 .container
+     的 max-width+padding（680+64=744）及代码块超长行撑宽，导致移动端
+     layout viewport 被撑到内容宽 → 走桌面布局 + iOS 文字自动放大。
+     minmax(0,1fr) 强制列不超过容器宽，且允许收缩到内容宽以下。 */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .container {
