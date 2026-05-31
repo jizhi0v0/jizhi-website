@@ -1,16 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 
 interface TocItem {
   id: string;
   text: string;
 }
 
+// 「当前阅读线」对齐 h2 的 scroll-margin-top(桌面 280px，见 globals.css）：
+// 点击目录跳转后标题顶部恰停在 280px 处，阅读线设在略低于该值，保证点击的标题
+// 立即被判为 active、向下滚动时高亮无空档。必须用固定像素而非 viewport 百分比——
+// scroll-margin-top 是固定值，按百分比在矮屏上会偏高（如 900px*0.2=180<280），
+// 导致点第二项却高亮第一项、且要多滑一段才更新。
+const ACTIVE_LINE = 290;
+
+// useLayoutEffect 在 SSR 会告警；客户端用 layout 版本，使挂载时的 compute 在首帧前
+// 完成定位，消除“刷新到中段先闪第一项”。
+const useIsoLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
 export function Toc({ items }: { items: TocItem[] }) {
   const [activeId, setActiveId] = useState<string | null>(items[0]?.id ?? null);
 
-  useEffect(() => {
+  useIsoLayoutEffect(() => {
     if (items.length === 0) return;
 
     // 基于滚动位置计算 active：取「最后一个顶部已越过阈值线的标题」。
@@ -31,11 +43,10 @@ export function Toc({ items }: { items: TocItem[] }) {
         setActiveId(items[items.length - 1].id);
         return;
       }
-      const threshold = viewport * 0.2;
       let current = items[0].id;
       for (let i = 0; i < items.length; i++) {
         const el = els[i];
-        if (el && el.getBoundingClientRect().top <= threshold) {
+        if (el && el.getBoundingClientRect().top <= ACTIVE_LINE) {
           current = items[i].id;
         }
       }
