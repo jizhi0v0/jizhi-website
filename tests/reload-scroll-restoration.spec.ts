@@ -94,6 +94,10 @@ test.describe("刷新后的文章滚动恢复", () => {
         ).paddingTop,
         metaZIndex: getComputedStyle(meta).zIndex,
         metaWillChange: getComputedStyle(meta).willChange,
+        metaBoxShadow: getComputedStyle(meta).boxShadow,
+        metaClipPath: getComputedStyle(meta).clipPath,
+        metaRect: meta.getBoundingClientRect().toJSON(),
+        viewportWidth: window.innerWidth,
         h2ScrollMargin: getComputedStyle(document.documentElement)
           .getPropertyValue("--h2-scroll-margin")
           .trim(),
@@ -106,6 +110,10 @@ test.describe("刷新后的文章滚动恢复", () => {
     expect(styles.articlePaddingTop).toBe("82px");
     expect(Number(styles.metaZIndex)).toBeGreaterThan(0);
     expect(styles.metaWillChange).toContain("transform");
+    expect(styles.metaBoxShadow).toBe("none");
+    expect(styles.metaClipPath).toBe("none");
+    expect(styles.metaRect.left).toBe(0);
+    expect(styles.metaRect.width).toBe(styles.viewportWidth);
     expect(styles.h2ScrollMargin).toBe("200px");
   });
 });

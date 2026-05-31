@@ -818,6 +818,7 @@ hr {
     position: fixed;
     left: 0;
     right: 0;
+    z-index: 30;
     height: var(--mobile-header-height);
     box-sizing: border-box;
     padding: 28px 0 20px;
@@ -867,13 +868,17 @@ hr {
   .post-meta-bar {
     position: fixed;
     top: var(--mobile-header-height);
-    left: 32px;
-    right: 32px;
-    padding: 16px 0 14px;
+    left: 0;
+    right: 0;
+    z-index: 29;
+    box-sizing: border-box;
+    padding: 16px 20px 14px;
+    box-shadow: none;
+    clip-path: none;
     transform: translate3d(0, 0, 0);
     backface-visibility: hidden;
     will-change: transform;
-    clip-path: inset(0 -100vw 0 -100vw);
+    isolation: isolate;
   }
   .post-meta-bar .back-link {
     margin-bottom: 10px;
