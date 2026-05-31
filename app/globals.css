@@ -106,6 +106,10 @@ hr {
   top: 0;
   background: var(--paper);
   z-index: 20;
+  /* iOS WebKit 下 sticky 元素在滚动恢复/快速滚动时偶尔晚一帧重绘、甚至丢帧
+     （刷新后滚动恢复那下跳转会触发，表现为 header 闪一下消失）。提升到独立
+     合成层强制其跟随滚动同步重绘，消除掉帧。translateZ(0) 不影响布局/sticky。 */
+  transform: translateZ(0);
 }
 .site-header-inner {
   display: flex;
