@@ -55,6 +55,10 @@ html, body {
   -webkit-font-smoothing: antialiased;
   margin: 0;
   padding: 0;
+  /* 与 layout.tsx 的 colorScheme 呼应、并作为 WebKit 最可靠的真源：声明明暗两套，
+     让 iOS 原生滚动指示条/回弹底色按网页主题着色。缺这一句时深色页面会配浅色滚动条，
+     滚动时最右沿显示成一条竖线（WebKit #198772）；纯文字处淡、滚过深色截图时明显。 */
+  color-scheme: light dark;
 }
 
 ::selection {

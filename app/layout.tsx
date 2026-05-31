@@ -51,6 +51,21 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // Telegram 等 WKWebView 内置浏览器的顶栏是半透明的：没有 theme-color 时它直接拿
+  // 页面正文当背景采样，顶部就「透出」正文、显脏（纯 Safari 不走这条路，所以无此问题）。
+  // 给出与纸色底（--paper）一致的不透明 hex（oklch 旧版 WebKit 不认，用 sRGB hex），
+  // 顶栏即变成与页面同色的实色，消除透出。明暗各一条，跟随系统。
+  // 这两个 hex 是 --paper 的 sRGB 等价值，改纸色时要同步更新——
+  // mobile-chrome.spec.ts 会像素比对 theme-color 与实际背景，漂移即红，无需手动盯。
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fcfaf6" },
+    { media: "(prefers-color-scheme: dark)", color: "#13110f" },
+  ],
+  // 同时声明明暗两套 color-scheme：让 iOS 的原生 UI（滚动指示条/橡皮筋回弹底色）
+  // 跟随网页主题着色，而不是默认按系统设置乱配——否则深色页面上会出现浅色滚动指示条，
+  // 滚动时在最右沿显示成一条竖线（WebKit #198772）。也让首帧 backdrop 用正确明暗色，
+  // 减少刷新时先闪白再变暗的中间态。
+  colorScheme: "light dark",
 };
 
 export default function RootLayout({
