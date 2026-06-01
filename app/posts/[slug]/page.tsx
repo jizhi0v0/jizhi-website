@@ -12,6 +12,7 @@ import { mdxOptions } from "@/lib/mdx";
 import { mdxComponents } from "@/components/mdx-components";
 import { ReadingProgress } from "@/components/ReadingProgress";
 import { Toc } from "@/components/Toc";
+import { Lightbox } from "@/components/Lightbox";
 
 export async function generateStaticParams() {
   const slugs = await getAllSlugs();
@@ -67,6 +68,7 @@ export default async function PostPage({
   return (
     <>
       <ReadingProgress />
+      <Lightbox />
       <div className={toc.length > 0 ? "has-toc" : ""}>
         {toc.length > 0 && <Toc items={toc} />}
         <article className="post-article container">

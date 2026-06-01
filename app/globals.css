@@ -371,6 +371,22 @@ hr {
   border: 1px solid var(--rule);
   border-radius: 4px;
   margin: 1.2em 0;
+  cursor: zoom-in;
+}
+
+/* 多图横排：相邻多张图自动并排，等宽分配，按各自比例自然缩放 */
+.post-body .img-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 1.2em 0;
+}
+.post-body .img-row .post-img {
+  margin: 0;
+  flex: 1 1 0;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
 }
 
 /* code */
@@ -899,6 +915,20 @@ hr {
   }
   .post-body {
     font-size: 16.5px;
+  }
+  /* 移动端：单图限高，避免整屏截图过于突兀；点开看大图 */
+  .post-body .post-img {
+    max-height: 300px;
+    width: auto;
+    max-width: 100%;
+  }
+  /* 横排图保持并排（半宽缩略图），不限高、填满各自单元 */
+  .post-body .img-row {
+    gap: 8px;
+  }
+  .post-body .img-row .post-img {
+    width: 100%;
+    max-height: none;
   }
   .post-meta-top {
     gap: 10px;
