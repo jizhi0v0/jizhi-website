@@ -27,7 +27,7 @@ function readActiveLine() {
 const useIsoLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-export function Toc({ items }: { items: TocItem[] }) {
+export function Toc({ items, title }: { items: TocItem[]; title: string }) {
   // 初始不预设高亮：SSR/预渲染 HTML 会按此初始值落地，若为 items[0] 则首屏 HTML 第一项
   // 就带 .active，浏览器首绘（早于 hydration 与 useLayoutEffect）即闪一下第一项。必须为
   // null——让 SSR HTML 不含任何 active，再由下方 effect 在首帧前补上当前章节。
@@ -111,7 +111,7 @@ export function Toc({ items }: { items: TocItem[] }) {
   return (
     <aside className="toc" data-spy={spyReady ? "on" : "off"}>
       <div className="toc-inner">
-        <div className="toc-title">目录</div>
+        <div className="toc-title">{title}</div>
         {items.map((it) => (
           <a
             key={it.id}

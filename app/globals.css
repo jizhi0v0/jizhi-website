@@ -723,6 +723,14 @@ hr {
   padding-bottom: 32px;
   border-bottom: 1px solid var(--rule);
 }
+/* 标签详情页的「标签 · X · 共 N 篇」副标题 */
+.tag-detail-sub {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  margin-bottom: 16px;
+}
 .tag-chip {
   font-family: var(--font-mono);
   font-size: 13px;

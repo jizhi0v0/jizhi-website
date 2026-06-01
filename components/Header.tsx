@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -45,10 +45,15 @@ export function Header() {
   // 去掉 /en 前缀后用于 active 判断
   const basePath = locale === "en" ? path.slice(3) || "/" : path;
 
-  // 客户端导航在 zh/en 间切换时同步 <html lang>（首帧由 layout 内联脚本设置）
+  // 语言切换时保留当前 search / hash（usePathname 不含这两者），避免在文章页
+  // 点切换丢失 TOC 锚点。客户端读取：SSR 首帧无后缀，挂载后补上；hashchange 实时跟随。
+  const [suffix, setSuffix] = useState("");
   useEffect(() => {
-    document.documentElement.lang = locale === "en" ? "en" : "zh-CN";
-  }, [locale]);
+    const sync = () => setSuffix(window.location.search + window.location.hash);
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, [path]);
 
   return (
     <header className="site-header">
@@ -71,7 +76,7 @@ export function Header() {
               </Link>
             ))}
             <Link
-              href={altLocalePath(path)}
+              href={altLocalePath(path) + suffix}
               className="nav-link lang-switch"
               title={d.switchTitle}
             >

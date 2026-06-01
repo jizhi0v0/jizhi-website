@@ -32,7 +32,7 @@ export async function PostView({
       <ReadingProgress />
       <Lightbox />
       <div className={toc.length > 0 ? "has-toc" : ""}>
-        {toc.length > 0 && <Toc items={toc} />}
+        {toc.length > 0 && <Toc items={toc} title={d.tocTitle} />}
         <article className="post-article container">
           <div className="post-meta-bar">
             <Link className="back-link" href={withLocale("/", locale)}>

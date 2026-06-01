@@ -3,8 +3,8 @@
 
 export type Locale = "zh" | "en";
 
-export const LOCALES: readonly Locale[] = ["zh", "en"] as const;
-export const DEFAULT_LOCALE: Locale = "zh";
+// 英文 UI 版的路径前缀。
+const EN_PREFIX = "/en";
 
 export interface Dict {
   nav: { posts: string; archive: string; tags: string; about: string };
@@ -21,6 +21,7 @@ export interface Dict {
   postRead: (n: number) => string;
   postPrev: string;
   postNext: string;
+  tocTitle: string;
   // 切到「另一种语言」时显示的标签
   switchLabel: string;
   switchTitle: string;
@@ -46,6 +47,7 @@ const zh: Dict = {
   postRead: (n) => `约 ${n} 分钟`,
   postPrev: "← 上一篇",
   postNext: "下一篇 →",
+  tocTitle: "目录",
   switchLabel: "EN",
   switchTitle: "English",
   metaAbout: "关于",
@@ -71,6 +73,7 @@ const en: Dict = {
   postRead: (n) => `~${n} min`,
   postPrev: "← Previous",
   postNext: "Next →",
+  tocTitle: "Contents",
   switchLabel: "中文",
   switchTitle: "中文",
   metaAbout: "About",
@@ -85,24 +88,25 @@ export function dict(locale: Locale): Dict {
   return DICTS[locale];
 }
 
-/** 给一个「中文基准」路径加上当前 locale 前缀（zh 不变，en 加 /en）。 */
+/** 给一个「中文基准」路径加上当前 locale 前缀（zh 不变，en 加 /en）。幂等：已带 /en 前缀的原样返回。 */
 export function withLocale(href: string, locale: Locale): string {
   if (locale === "zh") return href;
-  return href === "/" ? "/en" : "/en" + href;
+  if (href === EN_PREFIX || href.startsWith(EN_PREFIX + "/")) return href;
+  return href === "/" ? EN_PREFIX : EN_PREFIX + href;
 }
 
 /** 从 pathname 判断当前 locale。 */
 export function localeFromPath(path: string): Locale {
-  return path === "/en" || path.startsWith("/en/") ? "en" : "zh";
+  return path === EN_PREFIX || path.startsWith(EN_PREFIX + "/") ? "en" : "zh";
 }
 
 /** 当前页面在「另一种语言」下的对应路径，用于语言切换。 */
 export function altLocalePath(path: string): string {
   if (localeFromPath(path) === "en") {
-    const rest = path.slice(3); // 去掉 "/en"
+    const rest = path.slice(EN_PREFIX.length); // 去掉 "/en"
     return rest === "" ? "/" : rest;
   }
-  return path === "/" ? "/en" : "/en" + path;
+  return path === "/" ? EN_PREFIX : EN_PREFIX + path;
 }
 
 const EN_MONTHS = [

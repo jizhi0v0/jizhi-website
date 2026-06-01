@@ -33,17 +33,7 @@ export async function TagDetailView({
           </Link>
         ))}
       </div>
-      <div
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 12,
-          color: "var(--ink-3)",
-          letterSpacing: "0.04em",
-          marginBottom: 16,
-        }}
-      >
-        {d.tagDetail(tag, filtered.length)}
-      </div>
+      <div className="tag-detail-sub">{d.tagDetail(tag, filtered.length)}</div>
       <PostList posts={filtered} showYearSeparators={false} locale={locale} />
     </div>
   );
