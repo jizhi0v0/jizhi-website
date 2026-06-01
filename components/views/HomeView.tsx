@@ -3,7 +3,7 @@ import { PostList } from "@/components/PostList";
 import { dict, type Locale } from "@/lib/i18n";
 
 export async function HomeView({ locale }: { locale: Locale }) {
-  const posts = await getAllPosts();
+  const posts = await getAllPosts(locale);
   const d = dict(locale);
 
   return (

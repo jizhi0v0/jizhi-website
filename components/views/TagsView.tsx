@@ -4,7 +4,7 @@ import { dict, withLocale, type Locale } from "@/lib/i18n";
 
 export async function TagsView({ locale }: { locale: Locale }) {
   const d = dict(locale);
-  const tags = await getAllTags();
+  const tags = await getAllTags(locale);
   return (
     <div className="container-wide tags-page">
       <h1>{d.tagsTitle}</h1>

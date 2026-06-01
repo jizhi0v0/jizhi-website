@@ -12,7 +12,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const post = await getPost(slug);
+  const post = await getPost(slug, "zh");
   if (!post) return {};
   const url = `/posts/${slug}`;
   const image = post.image ?? "/og/default.png";

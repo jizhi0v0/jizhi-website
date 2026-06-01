@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
+import type { Locale } from "./i18n";
 
 export interface PostMeta {
   slug: string;
@@ -39,11 +40,42 @@ function normalizeDate(value: unknown): string {
   return String(value ?? "").slice(0, 10);
 }
 
-function toMeta(slug: string, raw: string): PostMeta & { content: string } {
+// 语言变体文件：<slug>.en.mdx。基准文件 <slug>.mdx 为中文。
+const LOCALE_VARIANT_RE = /\.en\.mdx$/;
+
+function isBaseFile(f: string): boolean {
+  return f.endsWith(".mdx") && !LOCALE_VARIANT_RE.test(f);
+}
+
+// 按 locale 读取文章原文：en 优先读 <slug>.en.mdx，没有则回退基准（中文）文件。
+async function readRaw(slug: string, locale: Locale): Promise<string | null> {
+  if (locale === "en") {
+    try {
+      return await fs.readFile(
+        path.join(POSTS_DIR, `${slug}.en.mdx`),
+        "utf-8",
+      );
+    } catch {
+      /* 无 en 变体，回退中文 */
+    }
+  }
+  try {
+    return await fs.readFile(path.join(POSTS_DIR, `${slug}.mdx`), "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+function toMeta(
+  slug: string,
+  raw: string,
+  locale: Locale,
+): PostMeta & { content: string } {
   const { data, content } = matter(raw);
   const words = countWords(content);
-  // 中文阅读速度约 600 字/分钟
-  const readMinutes = Math.max(1, Math.ceil(words / 600));
+  // 阅读速度：中文约 600 字/分钟，英文约 265 词/分钟
+  const perMinute = locale === "en" ? 265 : 600;
+  const readMinutes = Math.max(1, Math.ceil(words / perMinute));
   return {
     slug,
     title: String(data.title ?? slug),
@@ -58,38 +90,37 @@ function toMeta(slug: string, raw: string): PostMeta & { content: string } {
   };
 }
 
-export async function getAllPosts(): Promise<PostMeta[]> {
+export async function getAllPosts(locale: Locale): Promise<PostMeta[]> {
   const files = await fs.readdir(POSTS_DIR);
+  const slugs = files.filter(isBaseFile).map((f) => f.replace(/\.mdx$/, ""));
   const posts = await Promise.all(
-    files
-      .filter((f) => f.endsWith(".mdx"))
-      .map(async (f) => {
-        const slug = f.replace(/\.mdx$/, "");
-        const raw = await fs.readFile(path.join(POSTS_DIR, f), "utf-8");
-        const { content: _content, ...meta } = toMeta(slug, raw);
-        return meta;
-      }),
+    slugs.map(async (slug) => {
+      const raw = (await readRaw(slug, locale))!;
+      const { content: _content, ...meta } = toMeta(slug, raw, locale);
+      return meta;
+    }),
   );
   return posts.sort((a, b) => b.date.localeCompare(a.date));
 }
 
-export async function getPost(slug: string): Promise<Post | null> {
-  const file = path.join(POSTS_DIR, `${slug}.mdx`);
-  try {
-    const raw = await fs.readFile(file, "utf-8");
-    return toMeta(slug, raw);
-  } catch {
-    return null;
-  }
+export async function getPost(
+  slug: string,
+  locale: Locale,
+): Promise<Post | null> {
+  const raw = await readRaw(slug, locale);
+  if (raw == null) return null;
+  return toMeta(slug, raw, locale);
 }
 
 export async function getAllSlugs(): Promise<string[]> {
   const files = await fs.readdir(POSTS_DIR);
-  return files.filter((f) => f.endsWith(".mdx")).map((f) => f.replace(/\.mdx$/, ""));
+  return files.filter(isBaseFile).map((f) => f.replace(/\.mdx$/, ""));
 }
 
-export async function getAllTags(): Promise<{ tag: string; count: number }[]> {
-  const posts = await getAllPosts();
+export async function getAllTags(
+  locale: Locale,
+): Promise<{ tag: string; count: number }[]> {
+  const posts = await getAllPosts(locale);
   const counts = new Map<string, number>();
   for (const p of posts) {
     for (const t of p.tags) counts.set(t, (counts.get(t) ?? 0) + 1);

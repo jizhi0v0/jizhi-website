@@ -17,10 +17,10 @@ export async function PostView({
   locale: Locale;
 }) {
   const d = dict(locale);
-  const post = await getPost(slug);
+  const post = await getPost(slug, locale);
   if (!post) notFound();
 
-  const allPosts = await getAllPosts();
+  const allPosts = await getAllPosts(locale);
   const idx = allPosts.findIndex((p) => p.slug === slug);
   const prev = allPosts[idx + 1]; // older
   const next = allPosts[idx - 1]; // newer

@@ -4,7 +4,7 @@ import { dict, withLocale, type Locale } from "@/lib/i18n";
 
 export async function ArchiveView({ locale }: { locale: Locale }) {
   const d = dict(locale);
-  const posts = await getAllPosts();
+  const posts = await getAllPosts(locale);
   const byYear = new Map<string, typeof posts>();
   for (const p of posts) {
     const y = p.date.slice(0, 4);

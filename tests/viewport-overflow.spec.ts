@@ -3,8 +3,11 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 // 从 content/posts 动态取 slug，新增文章自动纳入回归，无需改测试。
+// 排除语言变体文件（<slug>.en.mdx）——它们不是独立 slug，对应路由由 /en${route} 覆盖。
 const postsDir = join(process.cwd(), "content/posts");
-const mdxFiles = readdirSync(postsDir).filter((f) => f.endsWith(".mdx"));
+const mdxFiles = readdirSync(postsDir).filter(
+  (f) => f.endsWith(".mdx") && !/\.en\.mdx$/.test(f),
+);
 const postSlugs = mdxFiles.map((f) => f.replace(/\.mdx$/, ""));
 
 // 含围栏代码块（```）的文章——只有这些才可能出现需要内部滚动的超长行。
