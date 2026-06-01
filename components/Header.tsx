@@ -9,6 +9,7 @@ import {
   localeFromPath,
   altLocalePath,
   withLocale,
+  EN_PREFIX,
   type Dict,
 } from "@/lib/i18n";
 
@@ -43,7 +44,7 @@ export function Header() {
   const locale = localeFromPath(path);
   const d = dict(locale);
   // 去掉 /en 前缀后用于 active 判断
-  const basePath = locale === "en" ? path.slice(3) || "/" : path;
+  const basePath = locale === "en" ? path.slice(EN_PREFIX.length) || "/" : path;
 
   // 语言切换时保留当前 search / hash（usePathname 不含这两者），避免在文章页
   // 点切换丢失 TOC 锚点。客户端读取：SSR 首帧无后缀，挂载后补上；hashchange 实时跟随。

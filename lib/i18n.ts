@@ -4,7 +4,7 @@
 export type Locale = "zh" | "en";
 
 // 英文 UI 版的路径前缀。
-const EN_PREFIX = "/en";
+export const EN_PREFIX = "/en";
 
 export interface Dict {
   nav: { posts: string; archive: string; tags: string; about: string };
