@@ -111,24 +111,26 @@ export default async function PostPage({
             </div>
           )}
 
-          <div className="article-footer">
-            <div>
-              {prev && (
-                <Link href={`/posts/${prev.slug}`}>
-                  <div className="label">← 上一篇</div>
-                  <div className="t">{prev.title}</div>
-                </Link>
-              )}
+          {(prev || next) && (
+            <div className="article-footer">
+              <div>
+                {prev && (
+                  <Link href={`/posts/${prev.slug}`}>
+                    <div className="label">← 上一篇</div>
+                    <div className="t">{prev.title}</div>
+                  </Link>
+                )}
+              </div>
+              <div className="next">
+                {next && (
+                  <Link href={`/posts/${next.slug}`}>
+                    <div className="label">下一篇 →</div>
+                    <div className="t">{next.title}</div>
+                  </Link>
+                )}
+              </div>
             </div>
-            <div className="next">
-              {next && (
-                <Link href={`/posts/${next.slug}`}>
-                  <div className="label">下一篇 →</div>
-                  <div className="t">{next.title}</div>
-                </Link>
-              )}
-            </div>
-          </div>
+          )}
         </article>
       </div>
     </>
