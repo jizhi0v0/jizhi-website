@@ -103,10 +103,7 @@ export function formatMD(d: string): string {
   return d.slice(5).replace("-", ".");
 }
 
-export function formatFull(d: string): string {
-  const [y, m, day] = d.split("-");
-  return `${y} 年 ${parseInt(m, 10)} 月 ${parseInt(day, 10)} 日`;
-}
+// 文章页的完整日期格式按 locale 区分，已迁到 lib/i18n.ts 的 formatFull。
 
 /** Extract H2 headings from MDX raw content for the TOC. */
 export function extractToc(mdx: string): { id: string; text: string }[] {
