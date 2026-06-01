@@ -76,6 +76,7 @@ export function Header() {
                 {i.label}
               </Link>
             ))}
+            <span className="nav-divider" aria-hidden="true" />
             <Link
               href={altLocalePath(path) + suffix}
               className="nav-link lang-switch"
