@@ -896,6 +896,9 @@ hr {
   .nav-link {
     font-size: 13px;
   }
+  .lang-switch {
+    font-size: 12px;
+  }
   .avatar {
     width: 26px;
     height: 26px;

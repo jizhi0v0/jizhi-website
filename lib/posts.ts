@@ -40,8 +40,8 @@ function normalizeDate(value: unknown): string {
   return String(value ?? "").slice(0, 10);
 }
 
-// 语言变体文件：<slug>.en.mdx。基准文件 <slug>.mdx 为中文。
-const LOCALE_VARIANT_RE = /\.en\.mdx$/;
+// 语言变体文件：<slug>.<lang>.mdx（如 .en.mdx）。基准文件 <slug>.mdx 为中文。
+const LOCALE_VARIANT_RE = /\.[a-z]{2}\.mdx$/;
 
 function isBaseFile(f: string): boolean {
   return f.endsWith(".mdx") && !LOCALE_VARIANT_RE.test(f);
