@@ -12,13 +12,17 @@ const postsWithCode = mdxFiles
   .filter((f) => readFileSync(join(postsDir, f), "utf8").includes("```"))
   .map((f) => f.replace(/\.mdx$/, ""));
 
-const routes = [
+const zhRoutes = [
   "/",
   "/archive",
   "/tags",
   "/about",
   ...postSlugs.map((s) => `/posts/${s}`),
 ];
+
+// 英文 UI 版走 /en 前缀，文案换成英文（可能更长）但布局复用同一套组件，
+// 一并纳入横向溢出回归。
+const routes = [...zhRoutes, ...zhRoutes.map((r) => (r === "/" ? "/en" : `/en${r}`))];
 
 const viewports = [
   { name: "mobile", width: 375, height: 812 },

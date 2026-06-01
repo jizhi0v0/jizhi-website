@@ -80,7 +80,7 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{if('scrollRestoration'in history)history.scrollRestoration='manual';if(window.TelegramWebviewProxy)document.documentElement.classList.add('tg-webview')}catch(e){}",
+              "try{if('scrollRestoration'in history)history.scrollRestoration='manual';if(window.TelegramWebviewProxy)document.documentElement.classList.add('tg-webview');if(location.pathname==='/en'||location.pathname.indexOf('/en/')===0)document.documentElement.lang='en'}catch(e){}",
           }}
         />
         <ScrollRestoration />

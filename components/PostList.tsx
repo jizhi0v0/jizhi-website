@@ -2,14 +2,20 @@ import { Fragment } from "react";
 import Link from "next/link";
 import type { PostMeta } from "@/lib/posts";
 import { formatMD } from "@/lib/posts";
+import { withLocale, DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
 
 interface Props {
   posts: PostMeta[];
   /** Show year separators (used on home / tag-filtered list). */
   showYearSeparators?: boolean;
+  locale?: Locale;
 }
 
-export function PostList({ posts, showYearSeparators = true }: Props) {
+export function PostList({
+  posts,
+  showYearSeparators = true,
+  locale = DEFAULT_LOCALE,
+}: Props) {
   return (
     <ul className="post-list">
       {posts.map((post, i) => {
@@ -27,7 +33,10 @@ export function PostList({ posts, showYearSeparators = true }: Props) {
               </li>
             )}
             <li>
-              <Link href={`/posts/${post.slug}`} className="post-row">
+              <Link
+                href={withLocale(`/posts/${post.slug}`, locale)}
+                className="post-row"
+              >
                 <span className="post-row-date">{formatMD(post.date)}</span>
                 <span className="post-row-title">{post.title}</span>
               </Link>

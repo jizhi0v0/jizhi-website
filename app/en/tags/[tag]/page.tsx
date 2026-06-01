@@ -12,14 +12,14 @@ export async function generateMetadata({
   params: Promise<{ tag: string }>;
 }) {
   const { tag } = await params;
-  return { title: `标签 · ${decodeURIComponent(tag)}` };
+  return { title: `Tag · ${decodeURIComponent(tag)}` };
 }
 
-export default async function TagPage({
+export default async function TagPageEn({
   params,
 }: {
   params: Promise<{ tag: string }>;
 }) {
   const { tag } = await params;
-  return <TagDetailView tag={decodeURIComponent(tag)} locale="zh" />;
+  return <TagDetailView tag={decodeURIComponent(tag)} locale="en" />;
 }

@@ -168,6 +168,24 @@ hr {
 .nav-link.active {
   color: var(--ink);
 }
+/* 语言切换：mono 小字 + 细边框，读作控件而非导航项 */
+.lang-switch {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  padding: 2px 7px;
+  border: 1px solid var(--line, var(--ink-3));
+  border-radius: 5px;
+  line-height: 1.4;
+}
+.lang-switch::after {
+  display: none;
+}
+.lang-switch:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
 .avatar {
   width: 30px;
   height: 30px;

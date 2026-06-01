@@ -14,7 +14,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const post = await getPost(slug);
   if (!post) return {};
-  const url = `/posts/${slug}`;
+  const url = `/en/posts/${slug}`;
   const image = post.image ?? "/og/default.png";
   return {
     title: post.title,
@@ -36,11 +36,11 @@ export async function generateMetadata({
   };
 }
 
-export default async function PostPage({
+export default async function PostPageEn({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  return <PostView slug={slug} locale="zh" />;
+  return <PostView slug={slug} locale="en" />;
 }
