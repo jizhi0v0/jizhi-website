@@ -1,9 +1,10 @@
-import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { getAllPosts, formatMD } from "@/lib/posts";
-import { dict, withLocale, type Locale } from "@/lib/i18n";
+import { Link } from "@/i18n/navigation";
+import type { Locale } from "@/lib/i18n";
 
 export async function ArchiveView({ locale }: { locale: Locale }) {
-  const d = dict(locale);
+  const t = await getTranslations({ locale, namespace: "archive" });
   const posts = await getAllPosts(locale);
   const byYear = new Map<string, typeof posts>();
   for (const p of posts) {
@@ -16,8 +17,10 @@ export async function ArchiveView({ locale }: { locale: Locale }) {
 
   return (
     <div className="container-wide archive-page">
-      <h1>{d.archiveTitle}</h1>
-      <div className="archive-sub">{d.archiveSub(posts.length, years.length)}</div>
+      <h1>{t("title")}</h1>
+      <div className="archive-sub">
+        {t("sub", { posts: posts.length, years: years.length })}
+      </div>
       {years.map((y) => (
         <div key={y} className="archive-year">
           <div className="archive-year-num">{y}</div>
@@ -25,9 +28,7 @@ export async function ArchiveView({ locale }: { locale: Locale }) {
             {byYear.get(y)!.map((p) => (
               <li key={p.slug}>
                 <span className="d">{formatMD(p.date)}</span>
-                <Link href={withLocale(`/posts/${p.slug}`, locale)}>
-                  {p.title}
-                </Link>
+                <Link href={`/posts/${p.slug}`}>{p.title}</Link>
               </li>
             ))}
           </ul>
