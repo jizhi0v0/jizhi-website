@@ -79,9 +79,15 @@ export function Header() {
             <span className="nav-divider" aria-hidden="true" />
             {/*
               已知行为：lang-switch 无脑指向另一语言的对应路径，不校验目标是否存在。
-              EN 站只提供译文（见 lib/posts.ts localeSlugs），故在「未译文章」的中文页上点
-              EN 会落到 /en/posts/<slug> 的 404。当前所有文章都附带英文译文，不会触发；
-              发未译文章时需知晓此取舍（已选择「接受 404」而非隐藏/降级按钮）。
+              两类跨 locale 路径在目标侧不存在时会落 404，均按取舍「接受 404」处理
+              （而非隐藏/降级按钮）：
+              1) 文章页——EN 站只提供译文（见 lib/posts.ts localeSlugs），在「未译文章」的
+                 中文页上点 EN 会落到 /en/posts/<slug> 的 404。当前所有文章都附带英文译文，
+                 暂不触发；发未译文章时需知晓此取舍。
+              2) 标签页——tag 各 locale 独立拼写（如「工作流」vs「Workflow」），故
+                 /en/tags/Workflow ↔ /tags/Workflow、/tags/工作流 ↔ /en/tags/工作流 都会
+                 因目标侧无对应 tag 而 404（TagDetailView 在 filtered 为空时 notFound）。
+                 这类对 turn-to-claude-desktop 的非同形 tag 现在即可复现。
             */}
             <Link
               href={altLocalePath(path) + suffix}
