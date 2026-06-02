@@ -32,6 +32,10 @@
     "next": "下一篇 →",
     "tocTitle": "目录"
   },
+  "lightbox": {
+    "previewFallback": "图片预览",
+    "close": "关闭"
+  },
   "meta": {
     "about": "关于",
     "archive": "归档",

@@ -6,6 +6,7 @@ export const mdxComponents = {
     <div className="callout">{children}</div>
   ),
   // 图片包成 figure 风格；tabIndex+role 让键盘用户也能触发 Lightbox（Enter/Space）。
+  // aria-label 省略：role="button" 让 AT 报按钮，可访问名直接来自 alt，不冗余。
   img: ({ alt, ...props }: ComponentPropsWithoutRef<"img">) => (
     // eslint-disable-next-line @next/next/no-img-element
     <img
@@ -14,7 +15,6 @@ export const mdxComponents = {
       className="post-img"
       tabIndex={0}
       role="button"
-      aria-label={alt ?? "查看大图"}
     />
   ),
 };

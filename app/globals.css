@@ -1089,14 +1089,13 @@ hr {
 }
 
 /* ===== 减少动效（前庭敏感用户） ===== */
-/* 设计上已是「无动画」风格，这里收尾：明确关掉现有 transition，
-   为将来可能加的动效提供统一降级兜底。 */
+/* 通配符方案：将来新增的 transition/animation 自动被覆盖，不需要手动回来维护。
+   animation-iteration-count:1 让「告知完成」的动画播一次即停（不完全禁，避免功能缺失）。
+   阅读进度条通过 inline style 改 width，无 CSS transition，不受影响。 */
 @media (prefers-reduced-motion: reduce) {
-  .footer-github {
-    transition: none;
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
-  .lightbox-close {
-    transition: none;
-  }
-  /* 阅读进度条通过 inline style 改 width，无 CSS transition，无需处理 */
 }

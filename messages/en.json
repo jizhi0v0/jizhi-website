@@ -32,6 +32,10 @@
     "next": "Next →",
     "tocTitle": "Contents"
   },
+  "lightbox": {
+    "previewFallback": "Image preview",
+    "close": "Close"
+  },
   "meta": {
     "about": "About",
     "archive": "Archive",
