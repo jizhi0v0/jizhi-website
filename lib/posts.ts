@@ -48,19 +48,28 @@ function isBaseFile(f: string): boolean {
 }
 
 // 按 locale 读取文章原文：en 优先读 <slug>.en.mdx，没有则回退基准（中文）文件。
-async function readRaw(slug: string, locale: Locale): Promise<string | null> {
+// 返回实际命中的 locale，供阅读时长按真实语言的 wpm 计算（回退到中文时不应按英文 wpm 估算）。
+async function readRaw(
+  slug: string,
+  locale: Locale,
+): Promise<{ raw: string; effectiveLocale: Locale } | null> {
   if (locale === "en") {
     try {
-      return await fs.readFile(
+      const raw = await fs.readFile(
         path.join(POSTS_DIR, `${slug}.en.mdx`),
         "utf-8",
       );
+      return { raw, effectiveLocale: "en" };
     } catch {
       /* 无 en 变体，回退中文 */
     }
   }
   try {
-    return await fs.readFile(path.join(POSTS_DIR, `${slug}.mdx`), "utf-8");
+    const raw = await fs.readFile(
+      path.join(POSTS_DIR, `${slug}.mdx`),
+      "utf-8",
+    );
+    return { raw, effectiveLocale: "zh" };
   } catch {
     return null;
   }
@@ -95,8 +104,8 @@ export async function getAllPosts(locale: Locale): Promise<PostMeta[]> {
   const slugs = files.filter(isBaseFile).map((f) => f.replace(/\.mdx$/, ""));
   const posts = await Promise.all(
     slugs.map(async (slug) => {
-      const raw = (await readRaw(slug, locale))!;
-      const { content: _content, ...meta } = toMeta(slug, raw, locale);
+      const { raw, effectiveLocale } = (await readRaw(slug, locale))!;
+      const { content: _content, ...meta } = toMeta(slug, raw, effectiveLocale);
       return meta;
     }),
   );
@@ -107,9 +116,9 @@ export async function getPost(
   slug: string,
   locale: Locale,
 ): Promise<Post | null> {
-  const raw = await readRaw(slug, locale);
-  if (raw == null) return null;
-  return toMeta(slug, raw, locale);
+  const found = await readRaw(slug, locale);
+  if (found == null) return null;
+  return toMeta(slug, found.raw, found.effectiveLocale);
 }
 
 export async function getAllSlugs(): Promise<string[]> {

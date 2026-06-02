@@ -176,7 +176,8 @@ hr {
   background: var(--rule);
 }
 /* 语言切换：mono 小字、弱化为工具型链接（不抢导航项的视觉权重） */
-.lang-switch {
+/* 同时命中 .nav-link 提升特异性，避免被各断点的 .nav-link 字号覆盖 */
+.nav-link.lang-switch {
   font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.02em;
@@ -895,9 +896,6 @@ hr {
   }
   .nav-link {
     font-size: 13px;
-  }
-  .lang-switch {
-    font-size: 12px;
   }
   .avatar {
     width: 26px;
