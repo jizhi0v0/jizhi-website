@@ -42,15 +42,14 @@ export function articleAlternates(
 ): Alternates {
   const zhPath = `/posts/${slug}`;
   const enPath = `/en/posts/${slug}`;
-  const languages: Record<string, string> = {};
-  if (available.zh) {
-    languages["zh-CN"] = zhPath;
-    languages["x-default"] = zhPath;
-  }
-  if (available.en) languages.en = enPath;
+  // hreflang 只在真有两个语言版本时才有意义；单语言文章发 languages 是冗余信号，
+  // 直接省略，让 Google 走 canonical 默认。
+  const bilingual = available.zh && available.en;
   return {
     canonical: locale === "en" ? enPath : zhPath,
-    languages: Object.keys(languages).length ? languages : undefined,
+    languages: bilingual
+      ? { "zh-CN": zhPath, en: enPath, "x-default": zhPath }
+      : undefined,
   };
 }
 

@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { getAllPosts, getAllTags } from "@/lib/posts";
 import { absUrl } from "@/lib/site";
+import { localizedPath } from "@/lib/seo";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [zhPosts, zhTags, enPosts, enTags] = await Promise.all([
@@ -10,12 +11,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     getAllTags("en"),
   ]);
 
-  // 用最新一篇的日期当作各列表页的 lastModified
-  const latest = zhPosts[0]?.date;
+  // 各 locale 用自己最新一篇的日期当列表页 lastModified——EN 长期不动时不会
+  // 因为 zh 更新而反复“声称”有更新，省得搜索引擎白白回 crawl。
+  const zhLatest = zhPosts[0]?.date;
+  const enLatest = enPosts[0]?.date;
   const enSlugs = new Set(enPosts.map((p) => p.slug));
+  // 没有任何译文时 EN 列表/归档/标签是空页，不进 sitemap；about 不依赖文章，照常收录。
+  const hasEnContent = enPosts.length > 0;
 
-  // 同时存在中英版的页面（首页 / 归档 / 标签 / 关于）：每条带 hreflang alternates，
-  // 让搜索引擎把 zh / en 识别成同一文档的两个语言副本。
   const STATIC: { path: string; priority: number; freq: "weekly" | "monthly" }[] =
     [
       { path: "/", priority: 1, freq: "weekly" },
@@ -23,39 +26,50 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       { path: "/tags", priority: 0.5, freq: "weekly" },
       { path: "/about", priority: 0.5, freq: "monthly" },
     ];
-  const enPath = (p: string) => (p === "/" ? "/en" : `/en${p}`);
   const staticPages: MetadataRoute.Sitemap = STATIC.flatMap(
     ({ path, priority, freq }) => {
-      const languages = { "zh-CN": absUrl(path), en: absUrl(enPath(path)) };
-      return [
+      const includeEn = hasEnContent || path === "/about";
+      const languages = includeEn
+        ? { "zh-CN": absUrl(path), en: absUrl(localizedPath("en", path)) }
+        : undefined;
+      const entries: MetadataRoute.Sitemap = [
         {
           url: absUrl(path),
-          lastModified: latest,
+          lastModified: zhLatest,
           changeFrequency: freq,
           priority,
-          alternates: { languages },
-        },
-        {
-          url: absUrl(enPath(path)),
-          lastModified: latest,
-          changeFrequency: freq,
-          priority: priority * 0.9,
-          alternates: { languages },
+          alternates: languages && { languages },
         },
       ];
+      if (includeEn) {
+        entries.push({
+          url: absUrl(localizedPath("en", path)),
+          lastModified: enLatest,
+          changeFrequency: freq,
+          priority: priority * 0.9,
+          alternates: languages && { languages },
+        });
+      }
+      return entries;
     },
   );
 
   const postPages: MetadataRoute.Sitemap = [
     ...zhPosts.map((p) => {
-      const languages: Record<string, string> = { "zh-CN": absUrl(`/posts/${p.slug}`) };
-      if (enSlugs.has(p.slug)) languages.en = absUrl(`/en/posts/${p.slug}`);
+      const bilingual = enSlugs.has(p.slug);
       return {
         url: absUrl(`/posts/${p.slug}`),
         lastModified: p.date,
         changeFrequency: "monthly" as const,
         priority: 0.8,
-        alternates: { languages },
+        alternates: bilingual
+          ? {
+              languages: {
+                "zh-CN": absUrl(`/posts/${p.slug}`),
+                en: absUrl(`/en/posts/${p.slug}`),
+              },
+            }
+          : undefined,
       };
     }),
     ...enPosts.map((p) => ({
@@ -75,13 +89,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const tagPages: MetadataRoute.Sitemap = [
     ...zhTags.map(({ tag }) => ({
       url: absUrl(`/tags/${encodeURIComponent(tag)}`),
-      lastModified: latest,
+      lastModified: zhLatest,
       changeFrequency: "weekly" as const,
       priority: 0.4,
     })),
     ...enTags.map(({ tag }) => ({
       url: absUrl(`/en/tags/${encodeURIComponent(tag)}`),
-      lastModified: latest,
+      lastModified: enLatest,
       changeFrequency: "weekly" as const,
       priority: 0.4,
     })),

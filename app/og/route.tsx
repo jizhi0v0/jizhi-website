@@ -21,12 +21,15 @@ async function fetchSubset(family: string, text: string): Promise<ArrayBuffer | 
   const url = `https://fonts.googleapis.com/css2?family=${family}&text=${encodeURIComponent(text)}`;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const cssRes = await fetch(url, { next: { revalidate: 86400 } });
+      // 加超时：外网端点卡住时 3 次 fetch 会让整条 /og 请求僵住，
+      // timeout 保证最差情况快速降级到 Inter fallback / 无字体绘制。
+      const opts = { next: { revalidate: 86400 }, signal: AbortSignal.timeout(3000) };
+      const cssRes = await fetch(url, opts);
       if (cssRes.ok) {
         const css = await cssRes.text();
         const src = css.match(/src:\s*url\(([^)]+)\)\s*format/);
         if (src) {
-          const fontRes = await fetch(src[1], { next: { revalidate: 86400 } });
+          const fontRes = await fetch(src[1], opts);
           if (fontRes.ok) return await fontRes.arrayBuffer();
         }
       }
@@ -53,8 +56,9 @@ async function loadFont(
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  // 公开路由，任何人都能构造超长参数 → 截断，避免渲染异常或字体子集变巨
-  const title = (searchParams.get("title") ?? SITE_NAME).slice(0, 80);
+  // 公开路由，任何人都能构造超长参数 → 截断，避免渲染异常或字体子集变巨。
+  // 用 || 而非 ??：空串 title（/og?title=）也走兜底，不渲染成空白。
+  const title = (searchParams.get("title") || SITE_NAME).slice(0, 80);
   const category = (searchParams.get("category") ?? "").slice(0, 40);
 
   // 字体子集要覆盖图上所有文字
