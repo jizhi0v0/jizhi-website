@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { cache } from "react";
 import matter from "gray-matter";
 import type { Locale } from "./i18n";
 
@@ -51,7 +52,9 @@ function isBaseFile(f: string): boolean {
 // 某 locale 下存在的文章 slug——「严格 EN」规则的单一事实来源：
 // zh = 所有基准文件 <slug>.mdx；en = 仅有译文 <slug>.en.mdx 的文章。
 // EN 站只提供译文：未译文章不进入 /en 的任何路由（列表 / 归档 / 标签 / 文章页）。
-async function localeSlugs(locale: Locale): Promise<string[]> {
+// React.cache 去重：同一次渲染里 getAllPosts / getAllSlugs / getAllTags 以及
+// 各 page 的 generateMetadata（会查对侧 locale 是否有译文）会多次触达，避免重复 readdir。
+const localeSlugs = cache(async (locale: Locale): Promise<string[]> => {
   const files = await fs.readdir(POSTS_DIR);
   if (locale === "en") {
     return files
@@ -59,7 +62,7 @@ async function localeSlugs(locale: Locale): Promise<string[]> {
       .map((f) => f.replace(/\.en\.mdx$/, ""));
   }
   return files.filter(isBaseFile).map((f) => f.replace(/\.mdx$/, ""));
-}
+});
 
 // 读取某 locale 的文章原文（不跨语言回退）：en 读 <slug>.en.mdx，zh 读 <slug>.mdx；缺失即 null。
 // 不回退，所以内容语言恒等于请求 locale——阅读时长按请求 locale 的 wpm 算即正确。

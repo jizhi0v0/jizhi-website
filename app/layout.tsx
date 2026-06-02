@@ -5,6 +5,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { ScrollRestoration } from "@/components/ScrollRestoration";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const sans = Inter({
@@ -33,21 +34,26 @@ const serif = Noto_Serif_SC({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://www.jizhiovo.com"),
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: "jizhi0v0 / keep_thinking",
+    default: SITE_NAME,
     template: "%s · jizhi0v0",
   },
-  description: "一个写得不勤、但还在写的小角落。",
+  description: SITE_DESCRIPTION,
   openGraph: {
     type: "website",
-    siteName: "jizhi0v0 / keep_thinking",
+    siteName: SITE_NAME,
     locale: "zh_CN",
     url: "/",
     images: ["/og/default.png"],
   },
   twitter: {
     card: "summary",
+  },
+  alternates: {
+    types: {
+      "application/rss+xml": "/feed.xml",
+    },
   },
 };
 
