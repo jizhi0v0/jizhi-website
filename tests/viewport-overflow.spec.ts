@@ -1,28 +1,38 @@
 import { test, expect } from "@playwright/test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { LOCALE_VARIANT_RE } from "../lib/posts";
 
 // 从 content/posts 动态取 slug，新增文章自动纳入回归，无需改测试。
+// 排除语言变体文件（<slug>.<lang>.mdx，如 .en.mdx）——它们不是独立 slug，对应路由由 /en${route} 覆盖。
 const postsDir = join(process.cwd(), "content/posts");
-const mdxFiles = readdirSync(postsDir).filter((f) => f.endsWith(".mdx"));
+const mdxFiles = readdirSync(postsDir).filter(
+  (f) => f.endsWith(".mdx") && !LOCALE_VARIANT_RE.test(f),
+);
 const postSlugs = mdxFiles.map((f) => f.replace(/\.mdx$/, ""));
+
+// EN 文章只取有译文 <slug>.en.mdx 的 slug——与 lib/posts.ts 的 strict-EN 规则一致：
+// 未译文章在 /en 下 404，若仍按基准 slug 拼 /en/posts/<slug> 会让测试静默落到 404 页、丢失覆盖。
+const enPostSlugs = readdirSync(postsDir)
+  .filter((f) => f.endsWith(".en.mdx"))
+  .map((f) => f.replace(/\.en\.mdx$/, ""));
 
 // 含围栏代码块（```）的文章——只有这些才可能出现需要内部滚动的超长行。
 const postsWithCode = mdxFiles
   .filter((f) => readFileSync(join(postsDir, f), "utf8").includes("```"))
   .map((f) => f.replace(/\.mdx$/, ""));
 
-const zhRoutes = [
-  "/",
-  "/archive",
-  "/tags",
-  "/about",
-  ...postSlugs.map((s) => `/posts/${s}`),
+const staticRoutes = ["/", "/archive", "/tags", "/about"];
+const zhRoutes = [...staticRoutes, ...postSlugs.map((s) => `/posts/${s}`)];
+
+// 英文 UI 版走 /en 前缀，文案换成英文（可能更长）但布局复用同一套组件，一并纳入横向溢出回归。
+// 静态页全量覆盖；文章页只覆盖已译 slug（其余在 /en 下不存在）。
+const enRoutes = [
+  ...staticRoutes.map((r) => (r === "/" ? "/en" : `/en${r}`)),
+  ...enPostSlugs.map((s) => `/en/posts/${s}`),
 ];
 
-// 英文 UI 版走 /en 前缀，文案换成英文（可能更长）但布局复用同一套组件，
-// 一并纳入横向溢出回归。
-const routes = [...zhRoutes, ...zhRoutes.map((r) => (r === "/" ? "/en" : `/en${r}`))];
+const routes = [...zhRoutes, ...enRoutes];
 
 const viewports = [
   { name: "mobile", width: 375, height: 812 },

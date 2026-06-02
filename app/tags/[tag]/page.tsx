@@ -2,7 +2,7 @@ import { getAllTags } from "@/lib/posts";
 import { TagDetailView } from "@/components/views/TagDetailView";
 
 export async function generateStaticParams() {
-  const tags = await getAllTags();
+  const tags = await getAllTags("zh");
   return tags.map(({ tag }) => ({ tag: encodeURIComponent(tag) }));
 }
 

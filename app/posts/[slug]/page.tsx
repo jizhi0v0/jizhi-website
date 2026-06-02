@@ -2,7 +2,7 @@ import { getAllSlugs, getPost } from "@/lib/posts";
 import { PostView } from "@/components/views/PostView";
 
 export async function generateStaticParams() {
-  const slugs = await getAllSlugs();
+  const slugs = await getAllSlugs("zh");
   return slugs.map((slug) => ({ slug }));
 }
 
@@ -12,7 +12,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const post = await getPost(slug);
+  const post = await getPost(slug, "zh");
   if (!post) return {};
   const url = `/posts/${slug}`;
   const image = post.image ?? "/og/default.png";

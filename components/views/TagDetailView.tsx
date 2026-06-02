@@ -12,11 +12,11 @@ export async function TagDetailView({
   locale: Locale;
 }) {
   const d = dict(locale);
-  const allPosts = await getAllPosts();
+  const allPosts = await getAllPosts(locale);
   const filtered = allPosts.filter((p) => p.tags.includes(tag));
   if (filtered.length === 0) notFound();
 
-  const allTags = await getAllTags();
+  const allTags = await getAllTags(locale);
 
   return (
     <div className="container-wide tags-page">

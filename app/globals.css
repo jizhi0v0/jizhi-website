@@ -168,23 +168,26 @@ hr {
 .nav-link.active {
   color: var(--ink);
 }
-/* 语言切换：mono 小字 + 细边框，读作控件而非导航项 */
-.lang-switch {
+/* nav 链接与右侧工具（语言切换 / 头像）之间的分隔线，把「页面导航」和「工具」分组 */
+.nav-divider {
+  width: 1px;
+  height: 15px;
+  align-self: center;
+  background: var(--rule);
+}
+/* 语言切换：mono 小字、弱化为工具型链接（不抢导航项的视觉权重） */
+/* 同时命中 .nav-link 提升特异性，避免被各断点的 .nav-link 字号覆盖 */
+.nav-link.lang-switch {
   font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.02em;
   color: var(--ink-3);
-  padding: 2px 7px;
-  border: 1px solid var(--line, var(--ink-3));
-  border-radius: 5px;
-  line-height: 1.4;
 }
 .lang-switch::after {
   display: none;
 }
 .lang-switch:hover {
   color: var(--ink);
-  border-color: var(--ink);
 }
 .avatar {
   width: 30px;
@@ -887,7 +890,7 @@ hr {
     margin: 0;
   }
   .nav {
-    gap: 16px;
+    gap: 11px;
     flex-wrap: nowrap;
     white-space: nowrap;
   }
@@ -897,7 +900,7 @@ hr {
   .avatar {
     width: 26px;
     height: 26px;
-    margin-left: 4px;
+    margin-left: 2px;
   }
 
   /* Fixed offsets shrink to match shorter mobile chrome */
