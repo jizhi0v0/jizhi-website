@@ -1,0 +1,53 @@
+---
+title: Switching to Claude Desktop
+date: 2026-05-30
+category: Tools
+tags: [Claude, Workflow, Productivity]
+excerpt: A better Claude Code experience
+image: /og/turn-to-claude-desktop.png
+---
+
+The Claude Code binary that Desktop spawns is pinned — it follows the Desktop version rather than chasing the latest release. It's more restrained, and usually works together better. For example, 1.9659.2 is bound to 2.1.156, which fixes the API error caused by Opus 4.8 thinking blocks being rewritten.
+
+## Why?
+
+- Desktop has built-in need-input / need-review notifications and indicator lights for both Chat & Code, seamlessly switching between local, cloud, and SSH sessions — no third-party app needed for session management and jumping around.
+
+  ![Pending-task indicator lights in the Desktop session list](/posts/turn-to-claude-desktop/sessions.png)
+- A Subagent session that finished running under Background tasks can be opened directly, fully visualizing its conversation, tool calls, token usage, and artifacts — not just a one-line settlement summary. That's something the command line can't do.
+
+  ![A completed Subagent session in the Background tasks panel, click to view the full transcript](/posts/turn-to-claude-desktop/subagents.png)
+- Terminal and IDE are decoupled — you can do diff review, and even edit files, right inside Desktop too. Anything the TUI can do, Desktop can do. Now that auto mode has shipped, the IDE is more of a pure editor.
+
+  ![Desktop's built-in Preview / Diff / Terminal / Files panels](/posts/turn-to-claude-desktop/panel.png)
+
+  ![The session menu's Open in: VS Code / Zed / Cloud / Finder](/posts/turn-to-claude-desktop/open-in.png)
+- Code sessions make it easier to see usage / context and switch model / effort, without interrupting the current conversation.
+
+  ![The Context window and Plan usage panels](/posts/turn-to-claude-desktop/usage.png)
+- No more putting up with the TUI's flickering — better scrolling, better views.
+- Switch between Chat and Code with tabs, instead of bouncing back and forth between the web and the TUI.
+- Switching branches, opening a Worktree, and Create PR all happen inside Desktop — no more switching between the IDE and the Terminal.
+
+## Coming from the command line
+
+Terminal muscle memory doesn't fade overnight, so for the transition I dropped in a small function that spins up a new Desktop session straight from the current directory:
+
+```bash
+clauded() {
+  local url="claude://code/new?folder=$(pwd)"
+  [ -n "$1" ] && url="${url}&q=$(python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))' "$*")"
+  open "$url"
+}
+
+# clauded            open an empty session in the current directory
+# clauded "Fix X"    also pass along the first question
+```
+
+`folder` takes `pwd`, so whichever project directory you type it in is the project the session opens in — almost the same feel as running `claude` in the terminal before.
+
+## Shortcomings
+
+Desktop still has some bugs right now; they're usually tolerable, and a few more iterations should make it smoother.
+1. Computer use is a far worse experience than Codex
+2. Desktop pops up CF challenges during startup and use

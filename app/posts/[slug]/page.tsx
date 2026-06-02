@@ -1,22 +1,9 @@
-import Link from "next/link";
-import { notFound } from "next/navigation";
-import { MDXRemote } from "next-mdx-remote/rsc";
-import {
-  getAllPosts,
-  getAllSlugs,
-  getPost,
-  formatFull,
-  extractToc,
-} from "@/lib/posts";
-import { mdxOptions } from "@/lib/mdx";
+import { getAllSlugs, getPost } from "@/lib/posts";
+import { PostView } from "@/components/views/PostView";
 import { SITE_AUTHOR, SITE_NAME, SITE_URL, absUrl } from "@/lib/site";
-import { mdxComponents } from "@/components/mdx-components";
-import { ReadingProgress } from "@/components/ReadingProgress";
-import { Toc } from "@/components/Toc";
-import { Lightbox } from "@/components/Lightbox";
 
 export async function generateStaticParams() {
-  const slugs = await getAllSlugs();
+  const slugs = await getAllSlugs("zh");
   return slugs.map((slug) => ({ slug }));
 }
 
@@ -26,7 +13,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const post = await getPost(slug);
+  const post = await getPost(slug, "zh");
   if (!post) return {};
   const url = `/posts/${slug}`;
   // 没配图的文章走 /og 动态生成标题卡（1200×630），统一用 large_image 卡片
@@ -65,17 +52,10 @@ export default async function PostPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const post = await getPost(slug);
-  if (!post) notFound();
+  const post = await getPost(slug, "zh");
 
-  const allPosts = await getAllPosts();
-  const idx = allPosts.findIndex((p) => p.slug === slug);
-  const prev = allPosts[idx + 1]; // older
-  const next = allPosts[idx - 1]; // newer
-
-  const toc = extractToc(post.content);
-
-  const jsonLd = {
+  // post 为空时交给 PostView 走 notFound()，这里只在有数据时注入结构化数据
+  const jsonLd = post && {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
     headline: post.title,
@@ -86,9 +66,7 @@ export default async function PostPage({
     publisher: { "@type": "Person", name: SITE_AUTHOR, url: SITE_URL },
     url: absUrl(`/posts/${slug}`),
     mainEntityOfPage: absUrl(`/posts/${slug}`),
-    image: absUrl(
-      post.image ?? `/og?title=${encodeURIComponent(post.title)}`,
-    ),
+    image: absUrl(post.image ?? `/og?title=${encodeURIComponent(post.title)}`),
     keywords: post.tags.length ? post.tags.join(", ") : undefined,
     articleSection: post.category || undefined,
     inLanguage: "zh-CN",
@@ -97,76 +75,13 @@ export default async function PostPage({
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
-      <ReadingProgress />
-      <Lightbox />
-      <div className={toc.length > 0 ? "has-toc" : ""}>
-        {toc.length > 0 && <Toc items={toc} />}
-        <article className="post-article container">
-          <div className="post-meta-bar">
-            <Link className="back-link" href="/">
-              ← 返回
-            </Link>
-            <div className="post-meta-top">
-              <span>{formatFull(post.date)}</span>
-              <span className="dot">·</span>
-              <span>{post.category}</span>
-              <span className="dot">·</span>
-              <span>{post.words} 字</span>
-              <span className="dot">·</span>
-              <span>约 {post.readMinutes} 分钟</span>
-            </div>
-          </div>
-          <h1 className="post-title">{post.title}</h1>
-          {post.excerpt && <p className="post-subtitle">{post.excerpt}</p>}
-          <div className="post-divider" />
-          <div className="post-body">
-            <MDXRemote
-              source={post.content}
-              components={mdxComponents}
-              options={{ mdxOptions: mdxOptions as never }}
-            />
-          </div>
-
-          {post.tags.length > 0 && (
-            <div className="post-tags">
-              {post.tags.map((t) => (
-                <Link
-                  key={t}
-                  href={`/tags/${encodeURIComponent(t)}`}
-                  className="tag-chip"
-                >
-                  {t}
-                </Link>
-              ))}
-            </div>
-          )}
-
-          {(prev || next) && (
-            <div className="article-footer">
-              <div>
-                {prev && (
-                  <Link href={`/posts/${prev.slug}`}>
-                    <div className="label">← 上一篇</div>
-                    <div className="t">{prev.title}</div>
-                  </Link>
-                )}
-              </div>
-              <div className="next">
-                {next && (
-                  <Link href={`/posts/${next.slug}`}>
-                    <div className="label">下一篇 →</div>
-                    <div className="t">{next.title}</div>
-                  </Link>
-                )}
-              </div>
-            </div>
-          )}
-        </article>
-      </div>
+      {jsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      )}
+      <PostView slug={slug} locale="zh" />
     </>
   );
 }

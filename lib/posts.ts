@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
+import type { Locale } from "./i18n";
 
 export interface PostMeta {
   slug: string;
@@ -39,11 +40,48 @@ function normalizeDate(value: unknown): string {
   return String(value ?? "").slice(0, 10);
 }
 
-function toMeta(slug: string, raw: string): PostMeta & { content: string } {
+// 语言变体文件：<slug>.<lang>.mdx（如 .en.mdx）。基准文件 <slug>.mdx 为中文。
+// export 供测试 fixture 复用同一规则，避免规则在多处各写一份而漂移。
+export const LOCALE_VARIANT_RE = /\.[a-z]{2}\.mdx$/;
+
+function isBaseFile(f: string): boolean {
+  return f.endsWith(".mdx") && !LOCALE_VARIANT_RE.test(f);
+}
+
+// 某 locale 下存在的文章 slug——「严格 EN」规则的单一事实来源：
+// zh = 所有基准文件 <slug>.mdx；en = 仅有译文 <slug>.en.mdx 的文章。
+// EN 站只提供译文：未译文章不进入 /en 的任何路由（列表 / 归档 / 标签 / 文章页）。
+async function localeSlugs(locale: Locale): Promise<string[]> {
+  const files = await fs.readdir(POSTS_DIR);
+  if (locale === "en") {
+    return files
+      .filter((f) => f.endsWith(".en.mdx"))
+      .map((f) => f.replace(/\.en\.mdx$/, ""));
+  }
+  return files.filter(isBaseFile).map((f) => f.replace(/\.mdx$/, ""));
+}
+
+// 读取某 locale 的文章原文（不跨语言回退）：en 读 <slug>.en.mdx，zh 读 <slug>.mdx；缺失即 null。
+// 不回退，所以内容语言恒等于请求 locale——阅读时长按请求 locale 的 wpm 算即正确。
+async function readRaw(slug: string, locale: Locale): Promise<string | null> {
+  const file = locale === "en" ? `${slug}.en.mdx` : `${slug}.mdx`;
+  try {
+    return await fs.readFile(path.join(POSTS_DIR, file), "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+function toMeta(
+  slug: string,
+  raw: string,
+  locale: Locale,
+): PostMeta & { content: string } {
   const { data, content } = matter(raw);
   const words = countWords(content);
-  // 中文阅读速度约 600 字/分钟
-  const readMinutes = Math.max(1, Math.ceil(words / 600));
+  // 阅读速度：中文约 600 字/分钟，英文约 265 词/分钟
+  const perMinute = locale === "en" ? 265 : 600;
+  const readMinutes = Math.max(1, Math.ceil(words / perMinute));
   return {
     slug,
     title: String(data.title ?? slug),
@@ -58,38 +96,38 @@ function toMeta(slug: string, raw: string): PostMeta & { content: string } {
   };
 }
 
-export async function getAllPosts(): Promise<PostMeta[]> {
-  const files = await fs.readdir(POSTS_DIR);
+export async function getAllPosts(locale: Locale): Promise<PostMeta[]> {
+  const slugs = await localeSlugs(locale);
   const posts = await Promise.all(
-    files
-      .filter((f) => f.endsWith(".mdx"))
-      .map(async (f) => {
-        const slug = f.replace(/\.mdx$/, "");
-        const raw = await fs.readFile(path.join(POSTS_DIR, f), "utf-8");
-        const { content: _content, ...meta } = toMeta(slug, raw);
-        return meta;
-      }),
+    slugs.map(async (slug) => {
+      // localeSlugs 已保证对应文件存在，故非空断言安全。
+      const raw = (await readRaw(slug, locale))!;
+      const { content: _content, ...meta } = toMeta(slug, raw, locale);
+      return meta;
+    }),
   );
   return posts.sort((a, b) => b.date.localeCompare(a.date));
 }
 
-export async function getPost(slug: string): Promise<Post | null> {
-  const file = path.join(POSTS_DIR, `${slug}.mdx`);
-  try {
-    const raw = await fs.readFile(file, "utf-8");
-    return toMeta(slug, raw);
-  } catch {
-    return null;
-  }
+export async function getPost(
+  slug: string,
+  locale: Locale,
+): Promise<Post | null> {
+  // EN 站只提供译文：无 <slug>.en.mdx 时 readRaw 返回 null → 该文章在 EN 下 404（不回退中文）。
+  const raw = await readRaw(slug, locale);
+  if (raw == null) return null;
+  return toMeta(slug, raw, locale);
 }
 
-export async function getAllSlugs(): Promise<string[]> {
-  const files = await fs.readdir(POSTS_DIR);
-  return files.filter((f) => f.endsWith(".mdx")).map((f) => f.replace(/\.mdx$/, ""));
+// 某 locale 下应静态生成的文章 slug（见 localeSlugs：zh = 全部，en = 仅已译）。
+export async function getAllSlugs(locale: Locale): Promise<string[]> {
+  return localeSlugs(locale);
 }
 
-export async function getAllTags(): Promise<{ tag: string; count: number }[]> {
-  const posts = await getAllPosts();
+export async function getAllTags(
+  locale: Locale,
+): Promise<{ tag: string; count: number }[]> {
+  const posts = await getAllPosts(locale);
   const counts = new Map<string, number>();
   for (const p of posts) {
     for (const t of p.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
@@ -103,10 +141,7 @@ export function formatMD(d: string): string {
   return d.slice(5).replace("-", ".");
 }
 
-export function formatFull(d: string): string {
-  const [y, m, day] = d.split("-");
-  return `${y} 年 ${parseInt(m, 10)} 月 ${parseInt(day, 10)} 日`;
-}
+// 文章页的完整日期格式按 locale 区分，已迁到 lib/i18n.ts 的 formatFull。
 
 /** Extract H2 headings from MDX raw content for the TOC. */
 export function extractToc(mdx: string): { id: string; text: string }[] {

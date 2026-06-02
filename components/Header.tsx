@@ -1,51 +1,106 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import {
+  dict,
+  localeFromPath,
+  altLocalePath,
+  withLocale,
+  EN_PREFIX,
+  type Dict,
+} from "@/lib/i18n";
 
-const NAV = [
-  {
-    href: "/",
-    label: "文章",
-    match: (p: string) => p === "/" || p.startsWith("/posts"),
-  },
-  {
-    href: "/archive",
-    label: "归档",
-    match: (p: string) => p.startsWith("/archive"),
-  },
-  { href: "/tags", label: "标签", match: (p: string) => p.startsWith("/tags") },
-  {
-    href: "/about",
-    label: "关于",
-    match: (p: string) => p.startsWith("/about"),
-  },
-];
+function navItems(d: Dict) {
+  return [
+    {
+      href: "/",
+      label: d.nav.posts,
+      // 注意：match 收到的是「去掉 /en 前缀后的中文基准路径」
+      match: (p: string) => p === "/" || p.startsWith("/posts"),
+    },
+    {
+      href: "/archive",
+      label: d.nav.archive,
+      match: (p: string) => p.startsWith("/archive"),
+    },
+    {
+      href: "/tags",
+      label: d.nav.tags,
+      match: (p: string) => p.startsWith("/tags"),
+    },
+    {
+      href: "/about",
+      label: d.nav.about,
+      match: (p: string) => p.startsWith("/about"),
+    },
+  ];
+}
 
 export function Header() {
   const path = usePathname() ?? "/";
+  const locale = localeFromPath(path);
+  const d = dict(locale);
+  // 去掉 /en 前缀后用于 active 判断
+  const basePath = locale === "en" ? path.slice(EN_PREFIX.length) || "/" : path;
+
+  // 语言切换时保留当前 search / hash（usePathname 不含这两者），避免在文章页
+  // 点切换丢失 TOC 锚点。客户端读取：SSR 首帧无后缀，挂载后补上；hashchange 实时跟随。
+  const [suffix, setSuffix] = useState("");
+  useEffect(() => {
+    const sync = () => setSuffix(window.location.search + window.location.hash);
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, [path]);
+
   return (
     <header className="site-header">
       <div className="container-wide">
         <div className="site-header-inner">
           <div>
-            <Link className="brand" href="/">
+            <Link className="brand" href={withLocale("/", locale)}>
               jizhi0v0
             </Link>
             <span className="brand-tagline">keep_thinking</span>
           </div>
           <nav className="nav">
-            {NAV.map((i) => (
+            {navItems(d).map((i) => (
               <Link
                 key={i.href}
-                href={i.href}
-                className={"nav-link " + (i.match(path) ? "active" : "")}
+                href={withLocale(i.href, locale)}
+                className={"nav-link " + (i.match(basePath) ? "active" : "")}
               >
                 {i.label}
               </Link>
             ))}
-            <Link href="/about" className="avatar" title="关于我">
+            <span className="nav-divider" aria-hidden="true" />
+            {/*
+              已知行为：lang-switch 无脑指向另一语言的对应路径，不校验目标是否存在。
+              两类跨 locale 路径在目标侧不存在时会落 404，均按取舍「接受 404」处理
+              （而非隐藏/降级按钮）：
+              1) 文章页——EN 站只提供译文（见 lib/posts.ts localeSlugs），在「未译文章」的
+                 中文页上点 EN 会落到 /en/posts/<slug> 的 404。当前所有文章都附带英文译文，
+                 暂不触发；发未译文章时需知晓此取舍。
+              2) 标签页——tag 各 locale 独立拼写（如「工作流」vs「Workflow」），故
+                 /en/tags/Workflow ↔ /tags/Workflow、/tags/工作流 ↔ /en/tags/工作流 都会
+                 因目标侧无对应 tag 而 404（TagDetailView 在 filtered 为空时 notFound）。
+                 这类对 turn-to-claude-desktop 的非同形 tag 现在即可复现。
+            */}
+            <Link
+              href={altLocalePath(path) + suffix}
+              className="nav-link lang-switch"
+              title={d.switchTitle}
+            >
+              {d.switchLabel}
+            </Link>
+            <Link
+              href={withLocale("/about", locale)}
+              className="avatar"
+              title={d.avatarTitle}
+            >
               <Image
                 src="/avatar.png"
                 alt="jizhi0v0"

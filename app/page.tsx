@@ -1,5 +1,4 @@
-import { getAllPosts } from "@/lib/posts";
-import { PostList } from "@/components/PostList";
+import { HomeView } from "@/components/views/HomeView";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const metadata = {
@@ -15,22 +14,14 @@ const websiteJsonLd = {
   inLanguage: "zh-CN",
 };
 
-export default async function HomePage() {
-  const posts = await getAllPosts();
-
+export default function HomePage() {
   return (
-    <div className="container-wide">
+    <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
       />
-      <div className="intro">
-        <p className="intro-line">
-          一些碎碎念.
-          <br />
-        </p>
-      </div>
-      <PostList posts={posts} />
-    </div>
+      <HomeView locale="zh" />
+    </>
   );
 }

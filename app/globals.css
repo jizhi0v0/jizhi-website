@@ -168,6 +168,27 @@ hr {
 .nav-link.active {
   color: var(--ink);
 }
+/* nav 链接与右侧工具（语言切换 / 头像）之间的分隔线，把「页面导航」和「工具」分组 */
+.nav-divider {
+  width: 1px;
+  height: 15px;
+  align-self: center;
+  background: var(--rule);
+}
+/* 语言切换：mono 小字、弱化为工具型链接（不抢导航项的视觉权重） */
+/* 同时命中 .nav-link 提升特异性，避免被各断点的 .nav-link 字号覆盖 */
+.nav-link.lang-switch {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+}
+.lang-switch::after {
+  display: none;
+}
+.lang-switch:hover {
+  color: var(--ink);
+}
 .avatar {
   width: 30px;
   height: 30px;
@@ -705,6 +726,14 @@ hr {
   padding-bottom: 32px;
   border-bottom: 1px solid var(--rule);
 }
+/* 标签详情页的「标签 · X · 共 N 篇」副标题 */
+.tag-detail-sub {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  margin-bottom: 16px;
+}
 .tag-chip {
   font-family: var(--font-mono);
   font-size: 13px;
@@ -861,7 +890,7 @@ hr {
     margin: 0;
   }
   .nav {
-    gap: 16px;
+    gap: 11px;
     flex-wrap: nowrap;
     white-space: nowrap;
   }
@@ -871,7 +900,7 @@ hr {
   .avatar {
     width: 26px;
     height: 26px;
-    margin-left: 4px;
+    margin-left: 2px;
   }
 
   /* Fixed offsets shrink to match shorter mobile chrome */

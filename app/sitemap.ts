@@ -3,8 +3,8 @@ import { getAllPosts, getAllTags } from "@/lib/posts";
 import { absUrl } from "@/lib/site";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const posts = await getAllPosts();
-  const tags = await getAllTags();
+  const posts = await getAllPosts("zh");
+  const tags = await getAllTags("zh");
 
   // 用最新一篇的日期当作首页 / 归档的 lastModified
   const latest = posts[0]?.date;

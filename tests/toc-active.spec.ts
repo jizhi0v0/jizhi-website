@@ -1,11 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { LOCALE_VARIANT_RE } from "../lib/posts";
 
 // 取第一篇含 ≥2 个二级标题的文章——TOC 至少要两项才能测高亮切换。
 const postsDir = join(process.cwd(), "content/posts");
 const slug = readdirSync(postsDir)
-  .filter((f) => f.endsWith(".mdx"))
+  .filter((f) => f.endsWith(".mdx") && !LOCALE_VARIANT_RE.test(f))
   .map((f) => ({
     slug: f.replace(/\.mdx$/, ""),
     h2: (readFileSync(join(postsDir, f), "utf8").match(/^##\s+/gm) || []).length,
