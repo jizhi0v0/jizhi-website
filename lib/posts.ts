@@ -41,35 +41,32 @@ function normalizeDate(value: unknown): string {
 }
 
 // 语言变体文件：<slug>.<lang>.mdx（如 .en.mdx）。基准文件 <slug>.mdx 为中文。
-const LOCALE_VARIANT_RE = /\.[a-z]{2}\.mdx$/;
+// export 供测试 fixture 复用同一规则，避免规则在多处各写一份而漂移。
+export const LOCALE_VARIANT_RE = /\.[a-z]{2}\.mdx$/;
 
 function isBaseFile(f: string): boolean {
   return f.endsWith(".mdx") && !LOCALE_VARIANT_RE.test(f);
 }
 
-// 按 locale 读取文章原文：en 优先读 <slug>.en.mdx，没有则回退基准（中文）文件。
-// 返回实际命中的 locale，供阅读时长按真实语言的 wpm 计算（回退到中文时不应按英文 wpm 估算）。
-async function readRaw(
-  slug: string,
-  locale: Locale,
-): Promise<{ raw: string; effectiveLocale: Locale } | null> {
+// 某 locale 下存在的文章 slug——「严格 EN」规则的单一事实来源：
+// zh = 所有基准文件 <slug>.mdx；en = 仅有译文 <slug>.en.mdx 的文章。
+// EN 站只提供译文：未译文章不进入 /en 的任何路由（列表 / 归档 / 标签 / 文章页）。
+async function localeSlugs(locale: Locale): Promise<string[]> {
+  const files = await fs.readdir(POSTS_DIR);
   if (locale === "en") {
-    try {
-      const raw = await fs.readFile(
-        path.join(POSTS_DIR, `${slug}.en.mdx`),
-        "utf-8",
-      );
-      return { raw, effectiveLocale: "en" };
-    } catch {
-      /* 无 en 变体，回退中文 */
-    }
+    return files
+      .filter((f) => f.endsWith(".en.mdx"))
+      .map((f) => f.replace(/\.en\.mdx$/, ""));
   }
+  return files.filter(isBaseFile).map((f) => f.replace(/\.mdx$/, ""));
+}
+
+// 读取某 locale 的文章原文（不跨语言回退）：en 读 <slug>.en.mdx，zh 读 <slug>.mdx；缺失即 null。
+// 不回退，所以内容语言恒等于请求 locale——阅读时长按请求 locale 的 wpm 算即正确。
+async function readRaw(slug: string, locale: Locale): Promise<string | null> {
+  const file = locale === "en" ? `${slug}.en.mdx` : `${slug}.mdx`;
   try {
-    const raw = await fs.readFile(
-      path.join(POSTS_DIR, `${slug}.mdx`),
-      "utf-8",
-    );
-    return { raw, effectiveLocale: "zh" };
+    return await fs.readFile(path.join(POSTS_DIR, file), "utf-8");
   } catch {
     return null;
   }
@@ -100,44 +97,31 @@ function toMeta(
 }
 
 export async function getAllPosts(locale: Locale): Promise<PostMeta[]> {
-  const files = await fs.readdir(POSTS_DIR);
-  const slugs = files.filter(isBaseFile).map((f) => f.replace(/\.mdx$/, ""));
+  const slugs = await localeSlugs(locale);
   const posts = await Promise.all(
     slugs.map(async (slug) => {
-      const { raw, effectiveLocale } = (await readRaw(slug, locale))!;
-      // EN 站只收录已翻译文章：回退到中文的文章不进 EN 列表/归档/标签，
-      // 避免中文 tag/category 渗入 /en 命名空间。
-      if (locale === "en" && effectiveLocale !== "en") return null;
-      const { content: _content, ...meta } = toMeta(slug, raw, effectiveLocale);
+      // localeSlugs 已保证对应文件存在，故非空断言安全。
+      const raw = (await readRaw(slug, locale))!;
+      const { content: _content, ...meta } = toMeta(slug, raw, locale);
       return meta;
     }),
   );
-  return posts
-    .filter((p): p is PostMeta => p !== null)
-    .sort((a, b) => b.date.localeCompare(a.date));
+  return posts.sort((a, b) => b.date.localeCompare(a.date));
 }
 
 export async function getPost(
   slug: string,
   locale: Locale,
 ): Promise<Post | null> {
-  const found = await readRaw(slug, locale);
-  if (found == null) return null;
-  // EN 站只提供译文：没有 .en.mdx 而回退到中文的，在 EN 下视为不存在（404）。
-  if (locale === "en" && found.effectiveLocale !== "en") return null;
-  return toMeta(slug, found.raw, found.effectiveLocale);
+  // EN 站只提供译文：无 <slug>.en.mdx 时 readRaw 返回 null → 该文章在 EN 下 404（不回退中文）。
+  const raw = await readRaw(slug, locale);
+  if (raw == null) return null;
+  return toMeta(slug, raw, locale);
 }
 
-// 列出某 locale 下应静态生成的文章 slug。
-// zh：所有基准文件；en：仅有 .en.mdx 译文的文章（未译文章不进 EN 路由）。
+// 某 locale 下应静态生成的文章 slug（见 localeSlugs：zh = 全部，en = 仅已译）。
 export async function getAllSlugs(locale: Locale): Promise<string[]> {
-  const files = await fs.readdir(POSTS_DIR);
-  if (locale === "en") {
-    return files
-      .filter((f) => /\.en\.mdx$/.test(f))
-      .map((f) => f.replace(/\.en\.mdx$/, ""));
-  }
-  return files.filter(isBaseFile).map((f) => f.replace(/\.mdx$/, ""));
+  return localeSlugs(locale);
 }
 
 export async function getAllTags(
