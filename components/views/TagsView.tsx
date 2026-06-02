@@ -1,21 +1,22 @@
-import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { getAllTags } from "@/lib/posts";
-import { dict, withLocale, type Locale } from "@/lib/i18n";
+import { Link } from "@/i18n/navigation";
+import type { Locale } from "@/lib/i18n";
 
 export async function TagsView({ locale }: { locale: Locale }) {
-  const d = dict(locale);
+  const t = await getTranslations({ locale, namespace: "tags" });
   const tags = await getAllTags(locale);
   return (
     <div className="container-wide tags-page">
-      <h1>{d.tagsTitle}</h1>
+      <h1>{t("title")}</h1>
       {tags.length === 0 ? (
-        <p style={{ color: "var(--ink-3)", fontSize: 14 }}>{d.tagsEmpty}</p>
+        <p style={{ color: "var(--ink-3)", fontSize: 14 }}>{t("empty")}</p>
       ) : (
         <div className="tag-cloud">
           {tags.map(({ tag, count }) => (
             <Link
               key={tag}
-              href={withLocale(`/tags/${encodeURIComponent(tag)}`, locale)}
+              href={`/tags/${encodeURIComponent(tag)}`}
               className="tag-chip"
             >
               {tag}

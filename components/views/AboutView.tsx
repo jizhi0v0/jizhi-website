@@ -1,8 +1,9 @@
 import Image from "next/image";
-import { dict, type Locale } from "@/lib/i18n";
+import { getTranslations } from "next-intl/server";
+import type { Locale } from "@/lib/i18n";
 
-export function AboutView({ locale }: { locale: Locale }) {
-  const d = dict(locale);
+export async function AboutView({ locale }: { locale: Locale }) {
+  const t = await getTranslations({ locale, namespace: "about" });
   return (
     <div className="container about-page">
       <div className="about-avatar">
@@ -14,7 +15,7 @@ export function AboutView({ locale }: { locale: Locale }) {
           priority
         />
       </div>
-      <h1>{d.aboutTitle}</h1>
+      <h1>{t("title")}</h1>
       <article>
         <p>Hi, I'm jizhi0v0.</p>
       </article>

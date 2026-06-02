@@ -1,50 +1,43 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
-import {
-  dict,
-  localeFromPath,
-  altLocalePath,
-  withLocale,
-  EN_PREFIX,
-  type Dict,
-} from "@/lib/i18n";
+import { useLocale, useTranslations } from "next-intl";
+import NextLink from "next/link";
+import { Link, usePathname } from "@/i18n/navigation";
 
-function navItems(d: Dict) {
+function navItems(t: (key: string) => string) {
   return [
     {
       href: "/",
-      label: d.nav.posts,
-      // 注意：match 收到的是「去掉 /en 前缀后的中文基准路径」
+      label: t("posts"),
       match: (p: string) => p === "/" || p.startsWith("/posts"),
     },
     {
       href: "/archive",
-      label: d.nav.archive,
+      label: t("archive"),
       match: (p: string) => p.startsWith("/archive"),
     },
     {
       href: "/tags",
-      label: d.nav.tags,
+      label: t("tags"),
       match: (p: string) => p.startsWith("/tags"),
     },
     {
       href: "/about",
-      label: d.nav.about,
+      label: t("about"),
       match: (p: string) => p.startsWith("/about"),
     },
   ];
 }
 
 export function Header() {
+  // next-intl 的 usePathname 返回「去掉 locale 前缀」的路径，active 判断直接用即可。
   const path = usePathname() ?? "/";
-  const locale = localeFromPath(path);
-  const d = dict(locale);
-  // 去掉 /en 前缀后用于 active 判断
-  const basePath = locale === "en" ? path.slice(EN_PREFIX.length) || "/" : path;
+  const locale = useLocale();
+  const otherLocale = locale === "en" ? "zh" : "en";
+  const tNav = useTranslations("nav");
+  const tCommon = useTranslations("common");
 
   // 语言切换时保留当前 search / hash（usePathname 不含这两者），避免在文章页
   // 点切换丢失 TOC 锚点。客户端读取：SSR 首帧无后缀，挂载后补上；hashchange 实时跟随。
@@ -61,46 +54,48 @@ export function Header() {
       <div className="container-wide">
         <div className="site-header-inner">
           <div>
-            <Link className="brand" href={withLocale("/", locale)}>
+            <Link className="brand" href="/">
               jizhi0v0
             </Link>
             <span className="brand-tagline">keep_thinking</span>
           </div>
           <nav className="nav">
-            {navItems(d).map((i) => (
+            {navItems(tNav).map((i) => (
               <Link
                 key={i.href}
-                href={withLocale(i.href, locale)}
-                className={"nav-link " + (i.match(basePath) ? "active" : "")}
+                href={i.href}
+                className={"nav-link " + (i.match(path) ? "active" : "")}
               >
                 {i.label}
               </Link>
             ))}
             <span className="nav-divider" aria-hidden="true" />
             {/*
-              已知行为：lang-switch 无脑指向另一语言的对应路径，不校验目标是否存在。
-              两类跨 locale 路径在目标侧不存在时会落 404，均按取舍「接受 404」处理
-              （而非隐藏/降级按钮）：
+              已知行为：lang-switch 无脑指向另一语言的「同一路径」，不校验目标是否存在。
+              两类跨 locale 路径在目标侧不存在时会落 404，均按取舍「接受 404」处理：
               1) 文章页——EN 站只提供译文（见 lib/posts.ts localeSlugs），在「未译文章」的
-                 中文页上点 EN 会落到 /en/posts/<slug> 的 404。当前所有文章都附带英文译文，
-                 暂不触发；发未译文章时需知晓此取舍。
-              2) 标签页——tag 各 locale 独立拼写（如「工作流」vs「Workflow」），故
-                 /en/tags/Workflow ↔ /tags/Workflow、/tags/工作流 ↔ /en/tags/工作流 都会
-                 因目标侧无对应 tag 而 404（TagDetailView 在 filtered 为空时 notFound）。
-                 这类对 turn-to-claude-desktop 的非同形 tag 现在即可复现。
+                 中文页上点 EN 会落到 /en/posts/<slug> 的 404。当前所有文章都附带英文译文。
+              2) 标签页——tag 各 locale 独立拼写（如「工作流」vs「Workflow」），故同一
+                 pathname 在目标侧无对应 tag 时会因 TagDetailView notFound 落 404。
+              path 是 usePathname() 的「去前缀」路径（/、/about…）。自己拼目标 locale 的
+              干净 URL（en 加 /en，zh 不加），用普通 next/link 直跳——不走 next-intl <Link>，
+              因为后者会按当前 locale 再加一次前缀（双重前缀），且切到默认 locale 会多一跳 307。
+              localeDetection:false 下干净 URL 本身即解析到对应 locale。
             */}
-            <Link
-              href={altLocalePath(path) + suffix}
+            <NextLink
+              href={
+                (otherLocale === "en"
+                  ? path === "/"
+                    ? "/en"
+                    : `/en${path}`
+                  : path) + suffix
+              }
               className="nav-link lang-switch"
-              title={d.switchTitle}
+              title={tCommon("switchTitle")}
             >
-              {d.switchLabel}
-            </Link>
-            <Link
-              href={withLocale("/about", locale)}
-              className="avatar"
-              title={d.avatarTitle}
-            >
+              {tCommon("switchLabel")}
+            </NextLink>
+            <Link href="/about" className="avatar" title={tCommon("avatarTitle")}>
               <Image
                 src="/avatar.png"
                 alt="jizhi0v0"

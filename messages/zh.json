@@ -1,0 +1,45 @@
+{
+  "nav": {
+    "posts": "文章",
+    "archive": "归档",
+    "tags": "标签",
+    "about": "关于"
+  },
+  "common": {
+    "avatarTitle": "关于我",
+    "homeIntro": "一些碎碎念.",
+    "switchLabel": "EN",
+    "switchTitle": "English",
+    "skipLink": "跳到正文"
+  },
+  "about": {
+    "title": "关于"
+  },
+  "archive": {
+    "title": "归档",
+    "sub": "{posts} 篇 · {years} 年"
+  },
+  "tags": {
+    "title": "标签",
+    "empty": "还没有标签。",
+    "detail": "标签 · {tag} · 共 {count} 篇"
+  },
+  "post": {
+    "back": "← 返回",
+    "words": "{n} 字",
+    "read": "约 {n} 分钟",
+    "prev": "← 上一篇",
+    "next": "下一篇 →",
+    "tocTitle": "目录"
+  },
+  "lightbox": {
+    "previewFallback": "图片预览",
+    "close": "关闭"
+  },
+  "meta": {
+    "about": "关于",
+    "archive": "归档",
+    "tags": "标签",
+    "tag": "标签 · {tag}"
+  }
+}

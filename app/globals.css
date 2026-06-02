@@ -75,6 +75,27 @@ hr {
   margin: 0;
 }
 
+/* ===== 无障碍工具 ===== */
+
+/* 键盘用户跳过导航直达正文；平时在视觉上隐藏（clip 方案，不影响布局），
+   Tab 聚焦时浮到页面左上角，方便确认位置。 */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 0;
+  z-index: 200;
+  padding: 8px 16px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  text-decoration: none;
+  border-radius: 0 0 4px 0;
+}
+.skip-link:focus {
+  top: 0;
+}
+
 /* ===== 主原型样式 ===== */
 
 .app {
@@ -783,6 +804,12 @@ hr {
 }
 
 /* ===== Lightbox ===== */
+/* .post-img 加了 tabIndex=0 + role=button，让图片可键盘聚焦、Enter/Space 打开灯箱。
+   focus-visible 用比 outline 更克制的下划线样式，与整站设计一致。 */
+.post-img:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 .lightbox {
   position: fixed;
   inset: 0;
@@ -797,6 +824,32 @@ hr {
   max-width: 92%;
   max-height: 92%;
   border-radius: 2px;
+  cursor: default;
+}
+/* 屏幕右上角的关闭按钮：给鼠标用户提供明确目标，给键盘用户承接焦点。 */
+.lightbox-close {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  background: oklch(1 0 0 / 0.15);
+  border: 1px solid oklch(1 0 0 / 0.3);
+  color: oklch(1 0 0 / 0.85);
+  border-radius: 4px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+}
+.lightbox-close:hover {
+  background: oklch(1 0 0 / 0.25);
+}
+.lightbox-close:focus-visible {
+  outline: 2px solid oklch(1 0 0 / 0.8);
+  outline-offset: 2px;
 }
 
 /* ===== Back link ===== */
@@ -1033,4 +1086,16 @@ hr {
 }
 .tg-webview .read-progress {
   display: none;
+}
+
+/* ===== 减少动效（前庭敏感用户） ===== */
+/* 通配符方案：将来新增的 transition/animation 自动被覆盖，不需要手动回来维护。
+   animation-iteration-count:1 让「告知完成」的动画播一次即停（不完全禁，避免功能缺失）。
+   阅读进度条通过 inline style 改 width，无 CSS transition，不受影响。 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

@@ -1,0 +1,45 @@
+{
+  "nav": {
+    "posts": "Posts",
+    "archive": "Archive",
+    "tags": "Tags",
+    "about": "About"
+  },
+  "common": {
+    "avatarTitle": "About me",
+    "homeIntro": "Just some scattered thoughts.",
+    "switchLabel": "中文",
+    "switchTitle": "中文",
+    "skipLink": "Skip to content"
+  },
+  "about": {
+    "title": "About"
+  },
+  "archive": {
+    "title": "Archive",
+    "sub": "{posts, plural, one {# post} other {# posts}} · {years, plural, one {# year} other {# years}}"
+  },
+  "tags": {
+    "title": "Tags",
+    "empty": "No tags yet.",
+    "detail": "Tag · {tag} · {count, plural, one {# post} other {# posts}}"
+  },
+  "post": {
+    "back": "← Back",
+    "words": "{n} words",
+    "read": "~{n} min",
+    "prev": "← Previous",
+    "next": "Next →",
+    "tocTitle": "Contents"
+  },
+  "lightbox": {
+    "previewFallback": "Image preview",
+    "close": "Close"
+  },
+  "meta": {
+    "about": "About",
+    "archive": "Archive",
+    "tags": "Tags",
+    "tag": "Tag · {tag}"
+  }
+}

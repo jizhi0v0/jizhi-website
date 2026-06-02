@@ -1,12 +1,16 @@
 import type { Metadata, Viewport } from "next";
+import { notFound } from "next/navigation";
 import { Inter, JetBrains_Mono, Noto_Serif_SC } from "next/font/google";
+import { NextIntlClientProvider, hasLocale } from "next-intl";
+import { setRequestLocale, getTranslations } from "next-intl/server";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { ScrollRestoration } from "@/components/ScrollRestoration";
+import { routing } from "@/i18n/routing";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
-import "./globals.css";
+import "../globals.css";
 
 const sans = Inter({
   subsets: ["latin"],
@@ -33,29 +37,46 @@ const serif = Noto_Serif_SC({
   variable: "--font-noto-serif-sc",
 });
 
-export const metadata: Metadata = {
-  metadataBase: new URL(SITE_URL),
-  title: {
-    default: SITE_NAME,
-    template: "%s · jizhi0v0",
-  },
-  description: SITE_DESCRIPTION,
-  openGraph: {
-    type: "website",
-    siteName: SITE_NAME,
-    locale: "zh_CN",
-    url: "/",
-    images: ["/og/default.png"],
-  },
-  twitter: {
-    card: "summary",
-  },
-  alternates: {
-    types: {
-      "application/rss+xml": "/feed.xml",
+// <html lang>：zh 用 zh-CN（屏幕阅读器走中文语音引擎），en 用 en。
+function htmlLang(locale: string): string {
+  return locale === "en" ? "en" : "zh-CN";
+}
+
+export function generateStaticParams() {
+  return routing.locales.map((locale) => ({ locale }));
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const isEn = locale === "en";
+  return {
+    metadataBase: new URL(SITE_URL),
+    title: {
+      default: SITE_NAME,
+      template: "%s · jizhi0v0",
     },
-  },
-};
+    description: SITE_DESCRIPTION,
+    openGraph: {
+      type: "website",
+      siteName: SITE_NAME,
+      locale: isEn ? "en_US" : "zh_CN",
+      url: isEn ? "/en" : "/",
+      images: ["/og/default.png"],
+    },
+    twitter: {
+      card: "summary",
+    },
+    alternates: {
+      types: {
+        "application/rss+xml": "/feed.xml",
+      },
+    },
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -68,14 +89,22 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({
+export default async function LocaleLayout({
   children,
+  params,
 }: {
   children: React.ReactNode;
+  params: Promise<{ locale: string }>;
 }) {
+  const { locale } = await params;
+  if (!hasLocale(routing.locales, locale)) notFound();
+  // 静态渲染必需：把当前 locale 注入 request 上下文，供 getTranslations/useTranslations 读取。
+  setRequestLocale(locale);
+  const t = await getTranslations({ locale, namespace: "common" });
+
   return (
     <html
-      lang="zh-CN"
+      lang={htmlLang(locale)}
       className={`${sans.variable} ${mono.variable} ${serif.variable}`}
     >
       <body>
@@ -90,11 +119,17 @@ export default function RootLayout({
           }}
         />
         <ScrollRestoration />
-        <div className="app">
-          <Header />
-          <main className="app-main">{children}</main>
-          <Footer />
-        </div>
+        <NextIntlClientProvider>
+          {/* 键盘/屏幕阅读器用户跳过导航直达正文；平时隐藏，Tab 聚焦时浮出。 */}
+          <a href="#main-content" className="skip-link">
+            {t("skipLink")}
+          </a>
+          <div className="app">
+            <Header />
+            <main id="main-content" className="app-main">{children}</main>
+            <Footer />
+          </div>
+        </NextIntlClientProvider>
         <script
           dangerouslySetInnerHTML={{
             __html:
