@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
 
 // 点击（或 Enter/Space）正文里的截图放大查看；点遮罩、按关闭按钮或 Esc 关闭。
 // 用事件委托监听 .post-img，无需改 MDX 里的每张图。
+//
+// 模态结构：createPortal 把 <div.lightbox> 挂到 <body> 下，而不是留在 .app 内。
+// 好处：对 .app 加 inert 封锁背景时，灯箱本身不受影响（inert 按子树传播）。
 export function Lightbox() {
   const t = useTranslations("lightbox");
   const [img, setImg] = useState<{ src: string; alt: string } | null>(null);
@@ -48,19 +52,21 @@ export function Lightbox() {
   }, []);
 
   const close = () => {
+    // 先移除 inert，再 focus()——effect cleanup 在 commit 后才跑，
+    // 若先 setImg(null) 再 focus()，.app 仍 inert，触发元素收不到焦点。
+    document.querySelector(".app")?.removeAttribute("inert");
     setImg(null);
     if (triggerRef.current instanceof HTMLElement) {
       triggerRef.current.focus();
     }
   };
 
-  // Esc 关闭 + inert 封锁背景 Tab 序列（让 aria-modal 承诺成立）+ 禁止背景滚动
+  // Esc 关闭 + 焦点移到关闭按钮 + inert 封锁背景 Tab 序列 + 禁止背景滚动
   useEffect(() => {
     if (!img) return;
-    // 打开后把焦点移到关闭按钮
     closeRef.current?.focus();
-    // inert 让 .app 内所有元素退出 Tab 序列，彻底封闭对话框外的焦点——
-    // 比手动 Tab 循环更稳健，将来 Lightbox 增加可聚焦元素也不需要改这里。
+    // inert 加到 .app，把 Header/main/Footer 整体退出 Tab 序列。
+    // Lightbox 经 createPortal 挂到 <body>，与 .app 平级，不受 inert 影响。
     const appEl = document.querySelector(".app");
     appEl?.setAttribute("inert", "");
     const onKey = (e: KeyboardEvent) => {
@@ -77,7 +83,7 @@ export function Lightbox() {
   }, [img]);
 
   if (!img) return null;
-  return (
+  return createPortal(
     <div
       className="lightbox"
       role="dialog"
@@ -95,6 +101,7 @@ export function Lightbox() {
       >
         ✕
       </button>
-    </div>
+    </div>,
+    document.body
   );
 }
