@@ -1,8 +1,9 @@
 import { TagsView } from "@/components/views/TagsView";
+import { staticAlternates } from "@/lib/seo";
 
 export const metadata = {
   title: "标签",
-  alternates: { canonical: "/tags" },
+  alternates: staticAlternates("zh", "/tags"),
 };
 
 export default function TagsPage() {

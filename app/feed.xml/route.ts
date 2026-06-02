@@ -13,7 +13,8 @@ function escapeXml(s: string): string {
 }
 
 export async function GET() {
-  const posts = await getAllPosts("zh");
+  // 阅读器只关心最新若干条，截断避免 feed 随文章累积无限增长
+  const posts = (await getAllPosts("zh")).slice(0, 50);
   const lastBuild = posts[0]?.date
     ? new Date(posts[0].date).toUTCString()
     : new Date(0).toUTCString();
