@@ -2,7 +2,7 @@ import { getAllSlugs, getPost } from "@/lib/posts";
 import { PostView } from "@/components/views/PostView";
 
 export async function generateStaticParams() {
-  const slugs = await getAllSlugs();
+  const slugs = await getAllSlugs("en");
   return slugs.map((slug) => ({ slug }));
 }
 

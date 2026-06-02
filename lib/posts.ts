@@ -105,11 +105,16 @@ export async function getAllPosts(locale: Locale): Promise<PostMeta[]> {
   const posts = await Promise.all(
     slugs.map(async (slug) => {
       const { raw, effectiveLocale } = (await readRaw(slug, locale))!;
+      // EN 站只收录已翻译文章：回退到中文的文章不进 EN 列表/归档/标签，
+      // 避免中文 tag/category 渗入 /en 命名空间。
+      if (locale === "en" && effectiveLocale !== "en") return null;
       const { content: _content, ...meta } = toMeta(slug, raw, effectiveLocale);
       return meta;
     }),
   );
-  return posts.sort((a, b) => b.date.localeCompare(a.date));
+  return posts
+    .filter((p): p is PostMeta => p !== null)
+    .sort((a, b) => b.date.localeCompare(a.date));
 }
 
 export async function getPost(
@@ -118,11 +123,20 @@ export async function getPost(
 ): Promise<Post | null> {
   const found = await readRaw(slug, locale);
   if (found == null) return null;
+  // EN 站只提供译文：没有 .en.mdx 而回退到中文的，在 EN 下视为不存在（404）。
+  if (locale === "en" && found.effectiveLocale !== "en") return null;
   return toMeta(slug, found.raw, found.effectiveLocale);
 }
 
-export async function getAllSlugs(): Promise<string[]> {
+// 列出某 locale 下应静态生成的文章 slug。
+// zh：所有基准文件；en：仅有 .en.mdx 译文的文章（未译文章不进 EN 路由）。
+export async function getAllSlugs(locale: Locale): Promise<string[]> {
   const files = await fs.readdir(POSTS_DIR);
+  if (locale === "en") {
+    return files
+      .filter((f) => /\.en\.mdx$/.test(f))
+      .map((f) => f.replace(/\.en\.mdx$/, ""));
+  }
   return files.filter(isBaseFile).map((f) => f.replace(/\.mdx$/, ""));
 }
 
