@@ -7,6 +7,7 @@ out/
 .vercel
 .zed/
 next-env.d.ts
+tsconfig.tsbuildinfo
 
 # Playwright
 /test-results/

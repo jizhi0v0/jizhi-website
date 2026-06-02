@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { getAllPosts, formatMD } from "@/lib/posts";
 
-export const metadata = { title: "归档" };
+export const metadata = {
+  title: "归档",
+  alternates: { canonical: "/archive" },
+};
 
 export default async function ArchivePage() {
   const posts = await getAllPosts();

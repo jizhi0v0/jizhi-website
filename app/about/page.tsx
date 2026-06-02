@@ -1,6 +1,9 @@
 import Image from "next/image";
 
-export const metadata = { title: "关于" };
+export const metadata = {
+  title: "关于",
+  alternates: { canonical: "/about" },
+};
 
 export default function AboutPage() {
   return (

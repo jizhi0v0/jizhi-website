@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { getAllTags } from "@/lib/posts";
 
-export const metadata = { title: "标签" };
+export const metadata = {
+  title: "标签",
+  alternates: { canonical: "/tags" },
+};
 
 export default async function TagsPage() {
   const tags = await getAllTags();
