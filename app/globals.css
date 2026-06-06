@@ -513,12 +513,40 @@ hr {
 .code-copy[data-copied] svg {
   transition-delay: 0s;
 }
+/* 「展开查看」按钮：紧贴复制按钮左侧，外观一致。
+   基础 opacity:0 必须声明在下方「平时隐藏 / hover:none 常显」规则之前，
+   否则同特异性下源码靠后会把那些显示规则盖掉、按钮在触摸端永不可见。 */
+.code-expand {
+  position: absolute;
+  top: 8px;
+  right: 46px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: var(--code-bg);
+  color: var(--ink-3);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.code-expand svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
 /* 平时隐藏，hover 代码块或键盘聚焦时浮出；触摸设备无 hover，常显。 */
 .code-block:hover .code-copy,
-.code-copy:focus-visible {
+.code-block:hover .code-expand,
+.code-copy:focus-visible,
+.code-expand:focus-visible {
   opacity: 1;
 }
-.code-copy:hover {
+.code-copy:hover,
+.code-expand:hover {
   color: var(--ink);
   border-color: var(--ink-3);
 }
@@ -528,7 +556,8 @@ hr {
   border-color: var(--ink-3);
 }
 @media (hover: none) {
-  .code-copy { opacity: 1; }
+  .code-copy,
+  .code-expand { opacity: 1; }
 }
 .post-body code {
   font-family: var(--font-mono);
@@ -545,22 +574,93 @@ hr {
 }
 
 /* shiki / rehype-pretty-code dual-theme */
-.post-body pre code [data-line] { display: block; }
+/* .code-modal-pre 一并纳入：展开模态经 portal 挂到 <body>、不在 .post-body 内，
+   需同样的配色规则，否则模态里的代码会丢失语法高亮。 */
+.post-body pre code [data-line],
+.code-modal-pre code [data-line] { display: block; }
 .post-body pre code .line {}
 @media (prefers-color-scheme: dark) {
   .post-body pre,
-  .post-body pre span {
+  .post-body pre span,
+  .code-modal-pre,
+  .code-modal-pre span {
     color: var(--shiki-dark) !important;
     background-color: var(--shiki-dark-bg) !important;
   }
 }
 @media (prefers-color-scheme: light) {
   .post-body pre,
-  .post-body pre span {
+  .post-body pre span,
+  .code-modal-pre,
+  .code-modal-pre span {
     color: var(--shiki-light);
     background-color: var(--shiki-light-bg);
   }
 }
+
+/* ===== 代码块全屏查看（展开模态） ===== */
+/* 结构/交互镜像图片 Lightbox：portal 到 <body>、遮罩点击或 Esc 关闭、焦点管理见 CodeBlock.tsx。
+   核心差异：长配置行在卡片内「自动换行」完整呈现，免去移动端逐行左右滑的糟糕体验。 */
+.code-modal {
+  position: fixed;
+  inset: 0;
+  background: oklch(0.1 0 0 / 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+}
+.code-modal-panel {
+  width: min(900px, 100%);
+  max-height: 85vh;
+  overflow: auto;
+  border-radius: 6px;
+}
+/* pre 本身即卡片：填满 panel、承担内边距与圆角，背景/配色由上面的 shiki 规则给出。
+   覆盖内联代码块的 nowrap，改为换行；overflow 交回 panel 做纵向滚动。 */
+.code-modal-pre {
+  margin: 0;
+  border: 0;
+  border-radius: 6px;
+  padding: 18px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: visible;
+  color: var(--ink);
+}
+.code-modal-pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+/* 复制 / 关闭按钮固定在屏幕右上角（与图片 Lightbox 的关闭按钮同位、同风格），
+   不随卡片内容滚动。复制按钮在关闭按钮左侧。 */
+.code-modal-copy {
+  position: fixed;
+  top: 16px;
+  right: 64px;
+  opacity: 1;
+  width: 36px;
+  height: 36px;
+  background: oklch(1 0 0 / 0.15);
+  border: 1px solid oklch(1 0 0 / 0.3);
+  color: oklch(1 0 0 / 0.85);
+}
+.code-modal-copy:hover,
+.code-modal-copy[data-copied] {
+  background: oklch(1 0 0 / 0.25);
+  color: oklch(1 0 0 / 0.95);
+  border-color: oklch(1 0 0 / 0.5);
+}
+.code-modal-copy svg {
+  width: 17px;
+  height: 17px;
+}
+/* .code-modal-close 复用 .lightbox-close 的定位与配色（固定屏幕右上角），无需额外规则。 */
 
 /* footnote (GFM 渲染出来的结构) */
 .fn-ref,
