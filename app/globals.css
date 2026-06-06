@@ -490,27 +490,33 @@ hr {
   opacity: 0;
   transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
-/* 两个图标原地堆叠（grid 同格），交叉淡入淡出，避免条件渲染硬切换。 */
+/* 两个图标原地堆叠（grid 同格），靠 opacity 切换，避免条件渲染硬切换。 */
 .code-copy svg {
   grid-area: 1 / 1;
   width: 15px;
   height: 15px;
   display: block;
-  /* 复原方向（data-copied 移除）延迟 0.15s 再切图标：等按钮 opacity 淡出后再换，
-     不在淡出过程中闪出「复制」图标。复制方向见下方 [data-copied] 覆盖为无延迟。 */
-  transition: opacity 0.15s ease 0.15s;
+  transition: opacity 0.12s ease;
 }
+/* 复原方向（data-copied 移除）：错峰切换，先让对勾淡出、再让复制图标淡入。
+   不让两者同时停在半透明——否则「对勾 + 复制」叠成一帧糊影，被察觉为一下小抖动。
+   同时整体延后 0.15s：桌面 hover 移开后按钮已淡出，交换发生在按钮不可见时不会闪图标
+   （沿用 f97b449 的思路）；触摸端按钮常显，则呈现干净的先出后进。 */
 .code-copy .icon-check {
   opacity: 0;
+  transition-delay: 0.15s;
 }
+.code-copy .icon-copy {
+  opacity: 1;
+  transition-delay: 0.24s;
+}
+/* 复制反馈要即时：按下后对勾立刻交叉淡入，不延迟、不错峰。 */
 .code-copy[data-copied] .icon-copy {
   opacity: 0;
+  transition-delay: 0s;
 }
 .code-copy[data-copied] .icon-check {
   opacity: 1;
-}
-/* 复制反馈要即时：点击后对勾立刻显示，不等延迟。 */
-.code-copy[data-copied] svg {
   transition-delay: 0s;
 }
 /* 「展开查看」按钮：紧贴复制按钮左侧，外观一致。
