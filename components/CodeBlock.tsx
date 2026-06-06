@@ -18,22 +18,50 @@ function codeText(pre: HTMLElement): string {
 // navigator.clipboard.writeText 会在「文档未聚焦」(NotAllowedError)、非安全上下文、
 // 被 Permissions-Policy 拦截等情况下拒绝——此时复制其实没发生、按钮却拿不到成功反馈。
 // 退回 execCommand("copy")：它只需选区 + 用户手势（点击即满足），不要求文档聚焦，
-// 覆盖前者失败的场景。返回是否真的复制成功，供调用方决定要不要给「已复制」反馈。
+// 覆盖前者失败的场景（典型即 iOS 上 Telegram/微信等内嵌 webview）。返回是否真的复制成功。
 function legacyCopy(text: string): boolean {
+  // select() 会抢走焦点与用户当前选区，复制后还原：键盘用户不丢「复制」按钮焦点，
+  // 正在别处划选的文字也不被清掉。
+  const prevFocus =
+    document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const sel = document.getSelection();
+  const savedRange =
+    sel && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null;
+
+  let ok = false;
   try {
     const ta = document.createElement("textarea");
     ta.value = text;
-    ta.readOnly = true;
+    ta.setAttribute("readonly", ""); // 防止 iOS 弹软键盘
     ta.style.cssText =
       "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none";
     document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand("copy");
+
+    // iOS Safari / 内嵌 webview：单纯 readonly+select() 常 execCommand 返回 true 但剪贴板为空
+    // （误报成功，比没反馈更难排查）。需 contentEditable + Range + setSelectionRange 才稳。
+    if (/ipad|iphone|ipod/i.test(navigator.userAgent)) {
+      ta.contentEditable = "true";
+      const range = document.createRange();
+      range.selectNodeContents(ta);
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      ta.setSelectionRange(0, text.length);
+    } else {
+      ta.select();
+    }
+
+    ok = document.execCommand("copy");
     ta.remove();
-    return ok;
   } catch {
-    return false;
+    ok = false;
   }
+
+  if (savedRange && sel) {
+    sel.removeAllRanges();
+    sel.addRange(savedRange);
+  }
+  prevFocus?.focus({ preventScroll: true }); // preventScroll：避免 (0,0) 的 textarea 把短页滚到顶
+  return ok;
 }
 
 export function CodeBlock({ children, ...props }: ComponentPropsWithoutRef<"pre">) {
