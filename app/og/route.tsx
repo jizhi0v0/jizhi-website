@@ -60,9 +60,10 @@ export async function GET(req: Request) {
   // 用 || 而非 ??：空串 title（/og?title=）也走兜底，不渲染成空白。
   const title = (searchParams.get("title") || SITE_NAME).slice(0, 80);
   const category = (searchParams.get("category") ?? "").slice(0, 40);
+  const date = (searchParams.get("date") ?? "").slice(0, 40);
 
   // 字体子集要覆盖图上所有文字
-  const fontText = title + category + SITE_NAME;
+  const fontText = title + category + date + SITE_NAME;
   const [font, avatar] = await Promise.all([loadFont(fontText), loadAvatar()]);
 
   return new ImageResponse(
@@ -98,36 +99,40 @@ export async function GET(req: Request) {
           style={{
             display: "flex",
             alignItems: "center",
+            justifyContent: "space-between",
             fontSize: 30,
             color: "#8a7f6f",
           }}
         >
-          {avatar ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={avatar}
-              width={56}
-              height={56}
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: 56,
-                marginRight: 20,
-                border: "2px solid #e7ddcb",
-              }}
-            />
-          ) : (
-            <div
-              style={{
-                width: 14,
-                height: 14,
-                borderRadius: 14,
-                background: "#c98a3c",
-                marginRight: 16,
-              }}
-            />
-          )}
-          {SITE_NAME}
+          <div style={{ display: "flex", alignItems: "center" }}>
+            {avatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={avatar}
+                width={56}
+                height={56}
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 56,
+                  marginRight: 20,
+                  border: "2px solid #e7ddcb",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: 14,
+                  background: "#c98a3c",
+                  marginRight: 16,
+                }}
+              />
+            )}
+            {SITE_NAME}
+          </div>
+          {date ? <div style={{ display: "flex" }}>{date}</div> : null}
         </div>
       </div>
     ),

@@ -1,5 +1,5 @@
 import type { PostMeta } from "./posts";
-import type { Locale } from "./i18n";
+import { formatFull, type Locale } from "./i18n";
 import { SITE_AUTHOR, SITE_DESCRIPTION, SITE_NAME, SITE_URL, absUrl } from "./site";
 
 // 把「中文站路径」翻成某 locale 的对外路径：en 加 /en 前缀，首页特判成 /en。
@@ -9,20 +9,34 @@ export function localizedPath(locale: Locale, zhPath: string): string {
 }
 
 // 文章社交卡图：有自配图用自配图，否则走 /og 动态卡。
-// OG 协议与 JSON-LD 共用同一 URL，避免两处参数不一致生成两张不同的图。
+// OG 协议与 JSON-LD 共用同一 URL，避免两处参数不一致生成两张不同的图——
+// 故调用方须传同一 locale（卡上日期按 locale 本地化）。
 export function postOgImage(
-  post: Pick<PostMeta, "image" | "title" | "category">,
+  post: Pick<PostMeta, "image" | "title" | "category" | "date">,
+  locale: Locale,
 ): string {
   if (post.image) return post.image;
   const params = new URLSearchParams({ title: post.title });
   if (post.category) params.set("category", post.category);
+  if (post.date) params.set("date", formatFull(post.date, locale));
   return `/og?${params.toString()}`;
 }
 
 type Alternates = {
   canonical: string;
   languages?: Record<string, string>;
+  types?: Record<string, string>;
 };
+
+// 各 locale 的 RSS 自发现链接。Next.js 对 metadata 的 alternates 是「整段浅覆盖」：
+// 页面一旦自带 alternates（canonical/hreflang），就会盖掉 layout 里的 alternates.types，
+// 导致 <link rel="alternate" type="rss"> 在任何设了 canonical 的页面都消失。故把 RSS
+// types 直接并进每个页面的 alternates，保证浏览器/阅读器始终能发现对应语种的 feed。
+function feedTypes(locale: Locale): Record<string, string> {
+  return {
+    "application/rss+xml": locale === "en" ? "/en/feed.xml" : "/feed.xml",
+  };
+}
 
 // 同时存在中英版的页面（首页 / about / archive / tags）的 canonical + hreflang。
 export function staticAlternates(locale: Locale, zhPath: string): Alternates {
@@ -30,6 +44,7 @@ export function staticAlternates(locale: Locale, zhPath: string): Alternates {
   return {
     canonical: localizedPath(locale, zhPath),
     languages: { "zh-CN": zhPath, en: enPath, "x-default": zhPath },
+    types: feedTypes(locale),
   };
 }
 
@@ -50,6 +65,7 @@ export function articleAlternates(
     languages: bilingual
       ? { "zh-CN": zhPath, en: enPath, "x-default": zhPath }
       : undefined,
+    types: feedTypes(locale),
   };
 }
 
@@ -72,12 +88,12 @@ export function blogPostingJsonLd(post: PostMeta, locale: Locale) {
     headline: post.title,
     description: post.excerpt || undefined,
     datePublished: post.date,
-    dateModified: post.date,
+    dateModified: post.updated || post.date,
     author: { "@type": "Person", name: SITE_AUTHOR, url: SITE_URL },
     publisher: { "@type": "Person", name: SITE_AUTHOR, url: SITE_URL },
     url,
     mainEntityOfPage: url,
-    image: absUrl(postOgImage(post)),
+    image: absUrl(postOgImage(post, locale)),
     keywords: post.tags.length ? post.tags.join(", ") : undefined,
     articleSection: post.category || undefined,
     inLanguage: locale === "en" ? "en" : "zh-CN",

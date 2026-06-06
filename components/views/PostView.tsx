@@ -41,6 +41,14 @@ export async function PostView({
             </Link>
             <div className="post-meta-top">
               <span>{formatFull(post.date, locale)}</span>
+              {post.updated && post.updated !== post.date && (
+                <>
+                  <span className="dot">·</span>
+                  <span>
+                    {t("updated", { date: formatFull(post.updated, locale) })}
+                  </span>
+                </>
+              )}
               <span className="dot">·</span>
               <span>{post.category}</span>
               <span className="dot">·</span>

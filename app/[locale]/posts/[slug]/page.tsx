@@ -34,7 +34,7 @@ export async function generateMetadata({
     getAllSlugs("zh"),
     getAllSlugs("en"),
   ]);
-  const image = postOgImage(post);
+  const image = postOgImage(post, loc);
   return {
     title: post.title,
     description: post.excerpt,
@@ -48,6 +48,7 @@ export async function generateMetadata({
       description: post.excerpt,
       url: localizedPath(loc, `/posts/${slug}`),
       publishedTime: post.date,
+      modifiedTime: post.updated || post.date,
       authors: [SITE_AUTHOR],
       section: post.category || undefined,
       tags: post.tags,

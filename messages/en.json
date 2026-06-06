@@ -30,7 +30,8 @@
     "read": "~{n} min",
     "prev": "← Previous",
     "next": "Next →",
-    "tocTitle": "Contents"
+    "tocTitle": "Contents",
+    "updated": "Updated {date}"
   },
   "lightbox": {
     "previewFallback": "Image preview",

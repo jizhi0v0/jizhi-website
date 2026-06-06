@@ -30,7 +30,8 @@
     "read": "约 {n} 分钟",
     "prev": "← 上一篇",
     "next": "下一篇 →",
-    "tocTitle": "目录"
+    "tocTitle": "目录",
+    "updated": "更新于 {date}"
   },
   "lightbox": {
     "previewFallback": "图片预览",

@@ -8,6 +8,7 @@ export interface PostMeta {
   slug: string;
   title: string;
   date: string;
+  updated?: string; // frontmatter `updated`：最后修订日，缺省即视为从未改过（= date）
   category: string;
   tags: string[];
   excerpt: string;
@@ -39,6 +40,32 @@ function countWords(content: string): number {
 function normalizeDate(value: unknown): string {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   return String(value ?? "").slice(0, 10);
+}
+
+// 无 frontmatter excerpt 时从正文取摘要兜底：description/og/twitter/JSON-LD/RSS 都吃
+// 这个字段，空 excerpt 会让 SEO 描述整段缺失。从正文首个实义段落抽一句，去掉
+// 代码块、标题、JSX/HTML、图片、链接语法、强调符等噪声，CJK 与英文都按可读长度截断。
+function deriveExcerpt(content: string): string {
+  const text = content
+    .replace(/```[\s\S]*?```/g, " ") // 围栏代码块
+    .replace(/`[^`]*`/g, " ") // 行内代码
+    .replace(/^import .*$/gm, "") // MDX import
+    .replace(/^export .*$/gm, "") // MDX export
+    .replace(/<[^>]+>/g, " ") // JSX / HTML 标签
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ") // 图片
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1") // 链接保留文字
+    .replace(/^\s{0,3}#{1,6}\s+.*$/gm, "") // 标题行
+    .replace(/^\s{0,3}>\s?/gm, "") // 引用前缀
+    .replace(/^\s{0,3}[-*+]\s+/gm, "") // 列表项前缀
+    .replace(/[*_~`]/g, ""); // 强调 / 删除线标记
+  // 首个含文字的段落（段落以空行分隔）
+  const para = text
+    .split(/\n\s*\n/)
+    .map((p) => p.replace(/\s+/g, " ").trim())
+    .find(Boolean);
+  if (!para) return "";
+  const LIMIT = 150;
+  return para.length > LIMIT ? `${para.slice(0, LIMIT).trimEnd()}…` : para;
 }
 
 // 语言变体文件：<slug>.<lang>.mdx（如 .en.mdx）。基准文件 <slug>.mdx 为中文。
@@ -85,13 +112,15 @@ function toMeta(
   // 阅读速度：中文约 600 字/分钟，英文约 265 词/分钟
   const perMinute = locale === "en" ? 265 : 600;
   const readMinutes = Math.max(1, Math.ceil(words / perMinute));
+  const excerpt = String(data.excerpt ?? "").trim() || deriveExcerpt(content);
   return {
     slug,
     title: String(data.title ?? slug),
     date: normalizeDate(data.date),
+    updated: data.updated ? normalizeDate(data.updated) : undefined,
     category: String(data.category ?? ""),
     tags: Array.isArray(data.tags) ? data.tags.map(String) : [],
-    excerpt: String(data.excerpt ?? ""),
+    excerpt,
     words,
     readMinutes,
     image: data.image ? String(data.image) : undefined,
