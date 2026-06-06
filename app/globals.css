@@ -606,14 +606,18 @@ hr {
   inset: 0;
   background: oklch(0.1 0 0 / 0.9);
   display: flex;
-  align-items: center;
+  /* 顶部对齐 + 上方留出按钮带：复制/关闭按钮固定在 top:16，卡片从 64px 起，
+     按钮落在卡片上方的暗区里（与图片 Lightbox 关闭按钮落在图外暗区一致），
+     不再压住卡片右上角——无论配置长短都不重叠。 */
+  align-items: flex-start;
   justify-content: center;
   z-index: 100;
-  padding: 24px;
+  padding: 64px 16px 24px;
 }
 .code-modal-panel {
   width: min(900px, 100%);
-  max-height: 85vh;
+  /* 100dvh 适配移动端浏览器工具栏；减去上下留白确保卡片完整落在按钮带之下。 */
+  max-height: calc(100dvh - 88px);
   overflow: auto;
   border-radius: 6px;
 }
