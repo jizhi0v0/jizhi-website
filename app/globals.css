@@ -446,6 +446,13 @@ hr {
 }
 
 /* code */
+/* rehype-pretty-code 把每个代码块包进 <figure data-rehype-pretty-code-figure>。浏览器 UA
+   默认 figure{margin:0 40px} 会把代码块左右各内缩 40px——桌面宽容器里不明显，移动端窄屏
+   直接吃掉 80px：代码块被挤窄、右侧留出大片空白、超长行更早触发内部横向滚动。归零，
+   纵向间距仍交由内层 .code-block 承担。 */
+.post-body figure[data-rehype-pretty-code-figure] {
+  margin: 0;
+}
 /* 复制按钮包裹层承担外边距，pre 自身归零，按钮才好绝对定位到代码块右上角。 */
 .post-body .code-block {
   position: relative;
