@@ -1296,6 +1296,9 @@ hr {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     transition-duration: 0.01ms !important;
+    /* 同时归零延迟：否则像复制按钮「错峰切图标」那种用 transition-delay 排序的动画，
+       duration 被压到 0 但 delay 仍在，会变成「先消失、隔一段再出现」的空窗闪烁。 */
+    transition-delay: 0s !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }

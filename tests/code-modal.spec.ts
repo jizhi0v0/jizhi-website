@@ -38,6 +38,13 @@ test.describe("代码块展开查看", () => {
     // 背景 .app 被 inert 封锁；模态经 portal 挂到 body、不受影响。
     await expect(page.locator(".app")).toHaveAttribute("inert", "");
 
+    // 模态内复制：live region 必须在 portal（inert 之外）才能被读屏播报。
+    // 断言模态里的 status 节点拿到「已复制」文案——内联那份此时在 inert 子树里被屏蔽。
+    await page.locator(".code-modal-copy").click();
+    await expect(
+      page.locator(".code-modal [role='status']"),
+    ).not.toHaveText("");
+
     // Esc 关闭后模态消失、inert 撤除、焦点回到展开按钮（屏幕阅读器不丢位置）。
     await page.keyboard.press("Escape");
     await expect(modal).toHaveCount(0);

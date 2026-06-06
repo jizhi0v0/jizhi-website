@@ -193,6 +193,7 @@ export function CodeBlock({
         onClick={() => setExpanded(true)}
         aria-label={t("expand")}
         aria-haspopup="dialog"
+        aria-expanded={expanded}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M8 3H5a2 2 0 0 0-2 2v3" />
@@ -201,7 +202,9 @@ export function CodeBlock({
           <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
         </svg>
       </button>
-      {/* 复制成功的读屏播报：常驻 live region，copied 时填入文案触发 polite 播报。 */}
+      {/* 复制成功的读屏播报：常驻 live region，copied 时填入文案触发 polite 播报。
+          模态打开时 .app 被加 inert（整棵子树移出无障碍树），这份会被屏蔽——
+          那种情形改由下方 portal 内的同款节点播报；此份服务「模态关闭时」的复制。 */}
       <span className="sr-only" role="status" aria-live="polite">
         {copied ? t("copied") : ""}
       </span>
@@ -239,6 +242,11 @@ export function CodeBlock({
             >
               ✕
             </button>
+            {/* 模态版 live region：随 portal 挂在 <body>、不在 inert 的 .app 子树内，
+                故模态内点复制时 polite 播报能正常发出（内联那份此时被 inert 屏蔽）。 */}
+            <span className="sr-only" role="status" aria-live="polite">
+              {copied ? t("copied") : ""}
+            </span>
           </div>,
           document.body,
         )}
