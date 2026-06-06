@@ -114,16 +114,17 @@ export function CodeBlock({ children, ...props }: ComponentPropsWithoutRef<"pre"
         aria-label={t("copy")}
         data-copied={copied ? "" : undefined}
       >
-        {copied ? (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M20 6 9 17l-5-5" />
-          </svg>
-        ) : (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <rect x="9" y="9" width="13" height="13" rx="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </svg>
-        )}
+        {/* 两个图标常驻、原地堆叠，由 CSS 按 data-copied 交叉淡入淡出。
+            不用 {copied ? A : B} 条件渲染：那样图标会在 copied 翻转的瞬间硬切换，
+            而按钮淡出（opacity 0.15s）尚未结束，会闪出一帧「复制」图标。CSS 给复原方向
+            加了 transition-delay，让图标等按钮淡出后再切回，消除这一帧闪烁。 */}
+        <svg className="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="9" y="9" width="13" height="13" rx="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+        <svg className="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
       </button>
       {/* 复制成功的读屏播报：常驻 live region，copied 时填入文案触发 polite 播报。 */}
       <span className="sr-only" role="status" aria-live="polite">

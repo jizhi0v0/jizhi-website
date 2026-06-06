@@ -470,9 +470,8 @@ hr {
   position: absolute;
   top: 8px;
   right: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   width: 30px;
   height: 30px;
   padding: 0;
@@ -484,10 +483,28 @@ hr {
   opacity: 0;
   transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
+/* 两个图标原地堆叠（grid 同格），交叉淡入淡出，避免条件渲染硬切换。 */
 .code-copy svg {
+  grid-area: 1 / 1;
   width: 15px;
   height: 15px;
   display: block;
+  /* 复原方向（data-copied 移除）延迟 0.15s 再切图标：等按钮 opacity 淡出后再换，
+     不在淡出过程中闪出「复制」图标。复制方向见下方 [data-copied] 覆盖为无延迟。 */
+  transition: opacity 0.15s ease 0.15s;
+}
+.code-copy .icon-check {
+  opacity: 0;
+}
+.code-copy[data-copied] .icon-copy {
+  opacity: 0;
+}
+.code-copy[data-copied] .icon-check {
+  opacity: 1;
+}
+/* 复制反馈要即时：点击后对勾立刻显示，不等延迟。 */
+.code-copy[data-copied] svg {
+  transition-delay: 0s;
 }
 /* 平时隐藏，hover 代码块或键盘聚焦时浮出；触摸设备无 hover，常显。 */
 .code-block:hover .code-copy,
