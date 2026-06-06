@@ -1,0 +1,76 @@
+---
+title: Joining Tailscale with Surge Mac
+date: 2026-06-06
+category: Tools
+tags: [Surge, Tailscale, Networking]
+excerpt: A minimal config you can use as-is
+---
+
+As of Surge Mac 6.7.0, Tailscale is built in as a proxy policy. You no longer run a separate Tailscale client — Surge itself joins the tailnet as a node, then routes matched traffic to machines inside it. Reaching internal devices, the NAS back home, a dev box — all go through this policy. Here's a minimal config you can copy verbatim.
+
+> Requires Surge Mac 6.7.0+. Note that 6.7.0 (11310) currently ships on the **beta channel** — switch Surge's update channel to beta to receive it. iOS support is said to follow soon. It's still an early beta — only TCP-based control / DERP paths are supported, UDP direct paths are not, and the occasional crash is expected.
+
+## Minimal config
+
+```ini
+[General]
+dns-server = 223.5.5.5, 119.29.29.29
+
+[Proxy]
+ts-home = tailscale, section-name=Home, underlying-proxy="proxy"
+proxy = ss, your-server.com, 8388, encrypt-method=chacha20-ietf-poly1305, password=YOUR_PASSWORD
+
+[Rule]
+DOMAIN-SUFFIX,tailXXXXXX.ts.net,ts-home # the full-domain suffix
+IP-CIDR,100.64.0.0/10,ts-home,no-resolve
+IP-CIDR6,fd7a:115c:a1e0::/48,ts-home,no-resolve
+IP-CIDR,192.168.50.0/24,ts-home,no-resolve # subnet, if you have one
+FINAL,DIRECT
+
+[Tailscale Home]
+auth-key = tskey-auth-....
+hostname = surge-mac
+dns-server = 8.8.8.8, 1.1.1.1
+prefer-ipv6 = true
+```
+
+## Walking through it
+
+**`ts-home` under `[Proxy]`** is a Tailscale policy:
+
+- `section-name=Home` points at the `[Tailscale Home]` section below — the names have to match.
+- `underlying-proxy="proxy"` wraps the control and DERP traffic in an outbound proxy; `"proxy"` points at the outbound policy below. The example is a Shadowsocks node — Surge uses comma-separated fields (`ss, host, port, encrypt-method=…, password=…`), not a raw `ss://` URL — so fill in your own values, or swap it for any other protocol's policy.
+
+**`[Rule]`** decides what enters the tailnet:
+
+- `DOMAIN-SUFFIX,tailXXXXXX.ts.net` matches MagicDNS names. Surge implements MagicDNS, but you still need an explicit rule to route it into the Tailscale policy.
+- `IP-CIDR,100.64.0.0/10` is the 100.x range (CGNAT) Tailscale assigns to nodes — fixed for everyone.
+- `IP-CIDR6,fd7a:115c:a1e0::/48` is Tailscale's IPv6 range, identical across all tailnets — copy it as-is.
+- `IP-CIDR,192.168.50.0/24` is an example subnet route: once a machine in the tailnet advertises your home LAN with `tailscale set --advertise-routes=192.168.50.0/24` and you approve that route on the console's *Machines* page, adding a rule for that range lets you reach devices that don't run Tailscale at all. Drop this line if you have no subnet.
+- `no-resolve` skips a pointless DNS lookup for pure-IP rules.
+- `FINAL,DIRECT` is the catch-all; everything else goes direct.
+
+> Don't agonize over whether more rules are needed: `100.64.0.0/10` and `fd7a:115c:a1e0::/48` are Tailscale's two supersets. Node addresses, the MagicDNS resolver `100.100.100.100`, the IPv6 service address `fd7a:115c:a1e0::53`, the 4via6 tunnel range — they all fall inside these two, already covered. The only things outside them that you'd add an `IP-CIDR` for are the **subnet route** above, and `0.0.0.0/0` / `::/0` if you use Surge as a full **exit node** (which is beyond "minimal internal access").
+
+**`[Tailscale Home]`** is the node itself:
+
+- `auth-key` registers this Surge instance into your tailnet. It's only used on the first connection; afterward Surge caches the node state. Changing this value clears that state and re-registers the device.
+- `hostname` is the device name shown in the tailnet; omit it and one is generated.
+- `dns-server` / `prefer-ipv6` set the DNS this policy uses and whether to prefer IPv6.
+
+## Three easy things to miss
+
+1. **Swap the MagicDNS suffix for your own.** `tailXXXXXX.ts.net` is just the example tailnet name; every account's is different. In any device's *Tailscale addresses* (in the console or the Mac app), the second half of the MagicDNS name `hostname.tailXXXXXX.ts.net` is your suffix. Replace `tailXXXXXX.ts.net` in the rule with it. `100.64.0.0/10` and `fd7a:115c:a1e0::/48` are fixed ranges — leave them alone.
+
+   ![A device's Tailscale addresses — the second half of the MagicDNS name, tailXXXXXX.ts.net, is the suffix](/posts/surge-mac-tailscale/magicdns-suffix.png)
+
+2. **Generate your own auth-key.** In the Tailscale console, *Settings → Keys → Generate auth key* (Reusable is handy), and drop the `tskey-auth-...` into `auth-key`.
+
+   ![Tailscale console Settings → Keys, click Generate auth key](/posts/surge-mac-tailscale/auth-key.png)
+
+3. **Prefer setting `underlying-proxy`.** Without an underlying proxy, control / DERP often fail to connect and the handshake stalls. Point it at an ordinary policy that gets out cleanly and the connection is far more stable.
+
+## Limitations
+
+- Only TCP-based control and DERP paths are supported — no UDP direct path, so latency and throughput trail the native client.
+- It's still beta and crashes now and then. It's enough as a lightweight, rule-driven entry into your internal network; for the full Tailscale experience, install the official client.

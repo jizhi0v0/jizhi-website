@@ -1,0 +1,76 @@
+---
+title: 用 Surge Mac 接入 Tailscale
+date: 2026-06-06
+category: 工具
+tags: [Surge, Tailscale, 网络]
+excerpt: 一份能直接用的最小配置
+---
+
+Surge Mac 6.7.0 起把 Tailscale 作为一种 proxy policy 内置了进来。不用再单独跑 Tailscale 客户端，Surge 自己作为一个节点加入 tailnet，然后用规则把命中的流量丢给 tailnet 里的机器——访问内网设备、回家里的 NAS、连开发机，都走这条策略。下面是一份能直接抄的最小配置。
+
+> 要求 Surge Mac 6.7.0+。注意 6.7.0 (11310) 目前走 **beta 渠道**，得在 Surge 设置里把更新通道切到 beta 才能收到。iOS 端官方称随后跟进。目前还是 early beta，只走 TCP 形态的 control / DERP，不实现 UDP 直连，偶尔崩溃属正常。
+
+## 最小配置
+
+```ini
+[General]
+dns-server = 223.5.5.5, 119.29.29.29
+
+[Proxy]
+ts-home = tailscale, section-name=Home, underlying-proxy="proxy"
+proxy = ss, your-server.com, 8388, encrypt-method=chacha20-ietf-poly1305, password=YOUR_PASSWORD
+
+[Rule]
+DOMAIN-SUFFIX,tailXXXXXX.ts.net,ts-home # Full domain 的后缀
+IP-CIDR,100.64.0.0/10,ts-home,no-resolve
+IP-CIDR6,fd7a:115c:a1e0::/48,ts-home,no-resolve
+IP-CIDR,192.168.50.0/24,ts-home,no-resolve # 子网，如果有的话
+FINAL,DIRECT
+
+[Tailscale Home]
+auth-key = tskey-auth-....
+hostname = surge-mac
+dns-server = 8.8.8.8, 1.1.1.1
+prefer-ipv6 = true
+```
+
+## 配置详解
+
+**`[Proxy]` 里的 `ts-home`** 是一条 Tailscale 策略：
+
+- `section-name=Home` 指向下面的 `[Tailscale Home]` 段，两边名字要对上。
+- `underlying-proxy="proxy"` 让 control 与 DERP 的流量再套一层出站代理，`"proxy"` 指向下面那条出站策略。例子给的是一个 Shadowsocks 节点——Surge 用逗号分隔的字段格式（`ss, host, 端口, encrypt-method=…, password=…`），并不直接吃 `ss://` 链接，把字段换成你自己的即可；也可以换成任意其它协议的策略。
+
+**`[Rule]`** 决定哪些流量进 tailnet：
+
+- `DOMAIN-SUFFIX,tailXXXXXX.ts.net` 命中 MagicDNS 域名。Surge 虽然实现了 MagicDNS，但仍需要显式用规则把它路由进 Tailscale 策略。
+- `IP-CIDR,100.64.0.0/10` 是 Tailscale 给节点分配的 100.x 地址段（CGNAT 段），固定不变。
+- `IP-CIDR6,fd7a:115c:a1e0::/48` 是 Tailscale 的 IPv6 段，对所有 tailnet 都一样，照抄即可。
+- `IP-CIDR,192.168.50.0/24` 是子网路由（subnet route）的例子：tailnet 里某台机器用 `tailscale set --advertise-routes=192.168.50.0/24` 把家里的局域网段广播出来、并在 Tailscale 后台 *Machines* 里批准这条路由后，再加一条对应网段的规则，就能直接访问那些没装 Tailscale 的设备。没有子网就删掉这行。
+- `no-resolve` 避免为纯 IP 规则做多余的 DNS 解析。
+- `FINAL,DIRECT` 兜底，其余流量直连。
+
+> 不用纠结要不要再补规则：`100.64.0.0/10` 和 `fd7a:115c:a1e0::/48` 是 Tailscale 的两个超集，节点地址、MagicDNS 解析器 `100.100.100.100`、IPv6 服务地址 `fd7a:115c:a1e0::53`、4via6 隧道段等全都落在这两段里，已经覆盖。真正在它们之外、需要你自己再加 `IP-CIDR` 的只有两类：上面的**子网路由**，以及把 Surge 当 **exit node** 全量出网时的 `0.0.0.0/0` / `::/0`（那超出"最小内网接入"的范畴）。
+
+**`[Tailscale Home]`** 是节点本身：
+
+- `auth-key` 把这台 Surge 注册进 tailnet，只在首次连接时用，之后 Surge 缓存节点状态；改动这个值会清掉状态并重新注册。
+- `hostname` 是在 tailnet 里显示的设备名，留空则自动生成。
+- `dns-server` / `prefer-ipv6` 设定这条策略用的 DNS 与是否优先 IPv6。
+
+## 三个容易踩的点
+
+1. **MagicDNS 后缀要换成你自己的。** `tailXXXXXX.ts.net` 是示例里的 tailnet 名，每个账号都不同。在 Tailscale 后台（或 Mac 客户端）任意一台机器的 *Tailscale addresses* 里，MagicDNS 那行 `主机名.tailXXXXXX.ts.net` 后半段就是你的后缀，替换规则里的 `tailXXXXXX.ts.net`。`100.64.0.0/10` 和 `fd7a:115c:a1e0::/48` 是固定段，不用动。
+
+   ![设备详情的 Tailscale addresses 里，MagicDNS 名后半段 tailXXXXXX.ts.net 即后缀](/posts/surge-mac-tailscale/magicdns-suffix.png)
+
+2. **auth-key 自己生成。** Tailscale 后台 *Settings → Keys → Generate auth key*，建议勾 Reusable，把 `tskey-auth-...` 填进 `auth-key`。
+
+   ![Tailscale 后台 Settings → Keys，点 Generate auth key 生成](/posts/surge-mac-tailscale/auth-key.png)
+
+3. **优先挂 `underlying-proxy`。** 不套底层代理时，control / DERP 经常连不上，握手卡住。指到一条能正常出网的普通策略上，连接稳定很多。
+
+## 局限
+
+- 只支持 TCP 形态的 control 与 DERP 路径，没有 UDP 直连，延迟与吞吐不如原生客户端。
+- 仍是 beta，偶发崩溃。当临时、按规则分流的内网入口够用；想要完整 Tailscale 体验还是装官方客户端。

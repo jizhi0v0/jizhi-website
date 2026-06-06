@@ -36,6 +36,10 @@
     "previewFallback": "Image preview",
     "close": "Close"
   },
+  "code": {
+    "copy": "Copy",
+    "copied": "Copied"
+  },
   "meta": {
     "about": "About",
     "archive": "Archive",

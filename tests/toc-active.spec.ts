@@ -63,9 +63,9 @@ test.describe("TOC 高亮", () => {
     expect(html).toContain('class="toc-item'); // 确认 TOC 确实渲染进了首屏 HTML
     // 只校验 toc-item 自身的 class 属性内不含 active；用 class="toc-item…active 收紧，
     // 避免误命中 Header 的 nav-link active 等无关高亮。
+    // 首屏无 active 是消除刷新闪烁的关键：全部项按基色 --ink-3 渲染（= 落定后非 active 配色、
+    // 与目录标题同色、可读），当前项由客户端 effect 在首帧前点亮；首绘即终态，无需 data-spy 提色。
     expect(html).not.toMatch(/class="toc-item[^"]*active/);
-    // 首屏须带 data-spy="off"：配合 CSS 把无 active 的目录提到可读色，否则首屏全暗 broken。
-    expect(html).toMatch(/class="toc"[^>]*data-spy="off"/);
   });
 
   // bug 5：.post-meta-bar 用 box-shadow 0 0 0 100vw 把纸色背景向左右各延伸一屏遮身后正文，

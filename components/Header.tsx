@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useLocale, useTranslations } from "next-intl";
-import NextLink from "next/link";
 import { Link, usePathname } from "@/i18n/navigation";
 
 function navItems(t: (key: string) => string) {
@@ -45,8 +44,14 @@ export function Header() {
   useEffect(() => {
     const sync = () => setSuffix(window.location.search + window.location.hash);
     sync();
+    // hashchange 跟 hash；popstate 跟前进/后退与（未来可能的）纯 query 变化，
+    // 两者都刷新 suffix，保证语言切换 href 始终带上当前 search + hash。
     window.addEventListener("hashchange", sync);
-    return () => window.removeEventListener("hashchange", sync);
+    window.addEventListener("popstate", sync);
+    return () => {
+      window.removeEventListener("hashchange", sync);
+      window.removeEventListener("popstate", sync);
+    };
   }, [path]);
 
   return (
@@ -78,11 +83,14 @@ export function Header() {
               2) 标签页——tag 各 locale 独立拼写（如「工作流」vs「Workflow」），故同一
                  pathname 在目标侧无对应 tag 时会因 TagDetailView notFound 落 404。
               path 是 usePathname() 的「去前缀」路径（/、/about…）。自己拼目标 locale 的
-              干净 URL（en 加 /en，zh 不加），用普通 next/link 直跳——不走 next-intl <Link>，
+              干净 URL（en 加 /en，zh 不加），用普通 <a> 整页跳转——不走 next-intl <Link>，
               因为后者会按当前 locale 再加一次前缀（双重前缀），且切到默认 locale 会多一跳 307。
               localeDetection:false 下干净 URL 本身即解析到对应 locale。
+              刻意用 <a> 整页跳转（而非客户端导航）：让根布局重新 SSR，拿到正确的
+              <html lang> 与首帧前的引导 <script>；也避免客户端重渲染根布局时，内联
+              <script> 触发 React "Encountered a script tag while rendering" 警告。
             */}
-            <NextLink
+            <a
               href={
                 (otherLocale === "en"
                   ? path === "/"
@@ -94,7 +102,7 @@ export function Header() {
               title={tCommon("switchTitle")}
             >
               {tCommon("switchLabel")}
-            </NextLink>
+            </a>
             <Link href="/about" className="avatar" title={tCommon("avatarTitle")}>
               <Image
                 src="/avatar.png"
