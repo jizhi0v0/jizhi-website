@@ -6,6 +6,9 @@ import { useTranslations } from "next-intl";
 // rehype-pretty-code 把每行渲染为 <span data-line>（display:block，但 textContent 不含换行）。
 // 直接取 code.textContent 会把所有行连成一行，故按 data-line 逐行取再用 \n 拼回；
 // 没有 data-line 时（理论上不会）回退到整段 textContent。
+// 约束：依赖「data-line 内只有代码文本」。若将来在 lib/mdx.ts 的 prettyCodeOptions 里启用
+// transformers（行号 gutter、diff +/- 标注等），那些注入节点会被一并 textContent 进剪贴板，
+// 届时需改成读 MDX source 原文或在此过滤。
 function codeText(pre: HTMLElement): string {
   const lines = pre.querySelectorAll("code [data-line]");
   if (lines.length) return Array.from(lines, (l) => l.textContent ?? "").join("\n");
@@ -40,11 +43,13 @@ export function CodeBlock({ children, ...props }: ComponentPropsWithoutRef<"pre"
       <pre ref={ref} {...props}>
         {children}
       </pre>
+      {/* aria-label 保持「复制」不变（不随状态切换）：焦点已在按钮上时切名字读屏不会主动播报，
+          且会让 AT「忘记当前按钮是什么」。复制成功的反馈交给下方 aria-live 状态节点。 */}
       <button
         type="button"
         className="code-copy"
         onClick={copy}
-        aria-label={copied ? t("copied") : t("copy")}
+        aria-label={t("copy")}
         data-copied={copied ? "" : undefined}
       >
         {copied ? (
@@ -58,6 +63,10 @@ export function CodeBlock({ children, ...props }: ComponentPropsWithoutRef<"pre"
           </svg>
         )}
       </button>
+      {/* 复制成功的读屏播报：常驻 live region，copied 时填入文案触发 polite 播报。 */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {copied ? t("copied") : ""}
+      </span>
     </div>
   );
 }
