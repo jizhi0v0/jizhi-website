@@ -106,12 +106,18 @@ export default async function LocaleLayout({
     <html
       lang={htmlLang(locale)}
       className={`${sans.variable} ${mono.variable} ${serif.variable}`}
+      // 下方引导 <script> 命中 Telegram 时给 documentElement 打 tg-webview 标，与
+      // 服务端渲染的 class 不一致，抑制这一处的 hydration 警告（仅 Telegram 内命中）。
+      suppressHydrationWarning
     >
       <body>
         {/* Telegram iOS 内嵌浏览器 UA 伪装成 Safari、无标识，但在 atDocumentStart
             注入 window.TelegramWebviewProxy（见 Telegram-iOS submodules/BrowserUI），
             故此脚本运行时它已存在。命中则打标，让 CSS 仅在该环境做收尾 hack；Safari
-            无此对象、零影响。内联同步执行，在首帧前打标避免闪烁。 */}
+            无此对象、零影响。内联同步执行，在首帧前打标避免闪烁。
+            内联 <script> 只需 SSR 首帧执行；语言切换走整页跳转（见 Header lang-switch）
+            而非客户端导航，故根布局不会在客户端重渲染，也就不会触发 React 的
+            "Encountered a script tag while rendering" 警告。 */}
         <script
           dangerouslySetInnerHTML={{
             __html:
@@ -130,6 +136,9 @@ export default async function LocaleLayout({
             <Footer />
           </div>
         </NextIntlClientProvider>
+        {/* 刷新/前进后退时在首帧前粗略复位滚动，消除"先到顶再跳"的闪烁；精确复位
+            由 <ScrollRestoration> 在字体/图片就位后兜底。置于 body 末尾，此时正文已解析、
+            scrollHeight 有效。 */}
         <script
           dangerouslySetInnerHTML={{
             __html:

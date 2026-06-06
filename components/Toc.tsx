@@ -30,14 +30,10 @@ const useIsoLayoutEffect =
 export function Toc({ items, title }: { items: TocItem[]; title: string }) {
   // 初始不预设高亮：SSR/预渲染 HTML 会按此初始值落地，若为 items[0] 则首屏 HTML 第一项
   // 就带 .active，浏览器首绘（早于 hydration 与 useLayoutEffect）即闪一下第一项。必须为
-  // null——让 SSR HTML 不含任何 active，再由下方 effect 在首帧前补上当前章节。
+  // null——SSR HTML 不含任何 active，全部项按基色 --ink-3 渲染（与目录标题同色、清晰可读），
+  // 再由下方 effect 在首帧前把「当前章节」一项点亮。首绘配色 = 落定后的非 active 配色，
+  // 故除了那一项亮起外整体无变化；该项亮起经 CSS color 过渡软化，消除刷新闪烁。
   const [activeId, setActiveId] = useState<string | null>(null);
-
-  // 首屏（SSR/未 hydration）走「可读保底」配色：此时 activeId 还是 null，若不处理则所有项
-  // 都是非 active 的暗灰、在深色底上几乎不可见，看着像目录坏了。data-spy="off" 期间 CSS 把
-  // 全部项提到可读色（既不全暗、也不闪第一项）；compute 一算出当前章节就切到 "on"，
-  // 恢复正常的「一项高亮、其余暗」层次。两个 set 在同一次 effect 同步触发，不留中间帧。
-  const [spyReady, setSpyReady] = useState(false);
 
   useIsoLayoutEffect(() => {
     if (items.length === 0) return;
@@ -85,7 +81,6 @@ export function Toc({ items, title }: { items: TocItem[]; title: string }) {
       };
 
       compute();
-      setSpyReady(true);
       window.addEventListener("scroll", onScroll, { passive: true });
       window.addEventListener("resize", onScroll, { passive: true });
       return () => {
@@ -109,7 +104,7 @@ export function Toc({ items, title }: { items: TocItem[]; title: string }) {
 
   if (items.length === 0) return null;
   return (
-    <aside className="toc" data-spy={spyReady ? "on" : "off"}>
+    <aside className="toc">
       <div className="toc-inner">
         <div className="toc-title">{title}</div>
         {items.map((it) => (

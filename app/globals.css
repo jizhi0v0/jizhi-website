@@ -432,6 +432,14 @@ hr {
 }
 
 /* code */
+/* 复制按钮包裹层承担外边距，pre 自身归零，按钮才好绝对定位到代码块右上角。 */
+.post-body .code-block {
+  position: relative;
+  margin: 1.6em 0;
+}
+.post-body .code-block > pre {
+  margin: 0;
+}
 .post-body pre {
   background: var(--code-bg);
   border: 1px solid var(--rule);
@@ -441,8 +449,48 @@ hr {
   font-family: var(--font-mono);
   font-size: 13.5px;
   line-height: 1.65;
-  margin: 1.6em 0;
+  /* 外边距由包裹层 .code-block 承担（见上方），pre 自身归零。 */
   color: var(--ink);
+}
+.code-copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: var(--code-bg);
+  color: var(--ink-3);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.code-copy svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+/* 平时隐藏，hover 代码块或键盘聚焦时浮出；触摸设备无 hover，常显。 */
+.code-block:hover .code-copy,
+.code-copy:focus-visible {
+  opacity: 1;
+}
+.code-copy:hover {
+  color: var(--ink);
+  border-color: var(--ink-3);
+}
+.code-copy[data-copied] {
+  opacity: 1;
+  color: var(--ink);
+  border-color: var(--ink-3);
+}
+@media (hover: none) {
+  .code-copy { opacity: 1; }
 }
 .post-body code {
   font-family: var(--font-mono);
@@ -582,17 +630,16 @@ hr {
   padding-left: 12px;
   margin-left: -1px;
   text-decoration: none !important;
+  /* SSR 首绘 activeId 为 null：全部项按基色 --ink-3 渲染（= 落定后的非 active 配色），
+     故首绘与 hydration 后整体一致、不再「整列变色」。hydration 只让当前章节一项变亮，
+     这一项的亮起、以及滚动时 active 的迁移、hover 都由本过渡软化成淡入，消除刷新闪烁。
+     prefers-reduced-motion 下被文末全局规则置 0。 */
+  transition: color 0.2s ease, border-left-color 0.2s ease;
 }
 .toc-item:hover { color: var(--ink); }
 .toc-item.active {
   color: var(--ink);
   border-left-color: var(--ink);
-}
-/* 首屏未接管（JS 未 hydration、Toc 还没标 data-spy="on"）时的可读保底：把全部项提到
-   可读色，避免「activeId 还是 null → 所有项暗灰 → 深色底上几乎不可见」的 broken 观感。
-   一旦客户端接管（data-spy="on"），本规则不再匹配，配色完全回到上面的 ink-3/active/hover。 */
-.toc:not([data-spy="on"]) .toc-item {
-  color: var(--ink-2);
 }
 
 /* ===== About ===== */

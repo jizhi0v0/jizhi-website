@@ -1,10 +1,13 @@
 import type { ComponentPropsWithoutRef } from "react";
+import { CodeBlock } from "./CodeBlock";
 
 export const mdxComponents = {
   // > ... 渲染为 callout（衬线斜体竖线引用）
   blockquote: ({ children }: ComponentPropsWithoutRef<"blockquote">) => (
     <div className="callout">{children}</div>
   ),
+  // 代码块（rehype-pretty-code 输出 <pre>）包一层带复制按钮的容器。
+  pre: (props: ComponentPropsWithoutRef<"pre">) => <CodeBlock {...props} />,
   // 图片包成 figure 风格；tabIndex+role 让键盘用户也能触发 Lightbox（Enter/Space）。
   // aria-label 省略：role="button" 让 AT 报按钮，可访问名直接来自 alt，不冗余。
   img: ({ alt, ...props }: ComponentPropsWithoutRef<"img">) => (
