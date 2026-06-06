@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type ComponentPropsWithoutRef } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentPropsWithoutRef,
+} from "react";
+import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
 
 // rehype-pretty-code 把每行渲染为 <span data-line>（display:block，但 textContent 不含换行）。
@@ -64,11 +70,54 @@ function legacyCopy(text: string): boolean {
   return ok;
 }
 
-export function CodeBlock({ children, ...props }: ComponentPropsWithoutRef<"pre">) {
+// 复制按钮：两个图标常驻、原地堆叠，由 CSS 按 data-copied 交叉淡入淡出。
+// 不用 {copied ? A : B} 条件渲染：那样图标会在 copied 翻转的瞬间硬切换，
+// 而按钮淡出（opacity 0.15s）尚未结束，会闪出一帧「复制」图标。CSS 给复原方向
+// 加了 transition-delay，让图标等按钮淡出后再切回，消除这一帧闪烁。
+function CopyButton({
+  copied,
+  onClick,
+  label,
+  className,
+}: {
+  copied: boolean;
+  onClick: () => void;
+  label: string;
+  className: string;
+}) {
+  return (
+    // aria-label 保持「复制」不变（不随状态切换）：焦点已在按钮上时切名字读屏不会主动播报，
+    // 且会让 AT「忘记当前按钮是什么」。复制成功的反馈交给下方 aria-live 状态节点。
+    <button
+      type="button"
+      className={className}
+      onClick={onClick}
+      aria-label={label}
+      data-copied={copied ? "" : undefined}
+    >
+      <svg className="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="9" y="9" width="13" height="13" rx="2" />
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+      </svg>
+      <svg className="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M20 6 9 17l-5-5" />
+      </svg>
+    </button>
+  );
+}
+
+export function CodeBlock({
+  children,
+  className,
+  ...props
+}: ComponentPropsWithoutRef<"pre">) {
   const ref = useRef<HTMLPreElement>(null);
   const timer = useRef<number | undefined>(undefined);
   const mounted = useRef(true);
+  const expandTriggerRef = useRef<HTMLButtonElement>(null);
+  const modalCloseRef = useRef<HTMLButtonElement>(null);
   const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const t = useTranslations("code");
 
   // 卸载时停掉回退计时器、标记已卸载，避免 async 复制 resolve 后对已卸载组件 setState。
@@ -80,6 +129,7 @@ export function CodeBlock({ children, ...props }: ComponentPropsWithoutRef<"pre"
   }, []);
 
   const copy = async () => {
+    // 始终读内联的 pre（展开时它仍在 DOM 里，只是被 .app 的 inert 屏蔽，textContent 照常可取）。
     const pre = ref.current;
     if (!pre) return;
     const text = codeText(pre);
@@ -100,36 +150,106 @@ export function CodeBlock({ children, ...props }: ComponentPropsWithoutRef<"pre"
     timer.current = window.setTimeout(() => setCopied(false), 1500);
   };
 
+  const closeModal = () => {
+    // 先移除 inert，再 focus()——若先 setExpanded(false) 触发卸载 effect 之前 .app 仍 inert，
+    // 触发元素收不到焦点（镜像 Lightbox 的处理）。
+    document.querySelector(".app")?.removeAttribute("inert");
+    setExpanded(false);
+    expandTriggerRef.current?.focus();
+  };
+
+  // 展开时：焦点移到关闭按钮 + inert 封锁背景 Tab 序列 + Esc 关闭 + 禁止背景滚动。
+  // 模态经 createPortal 挂到 <body>，与 .app 平级，故对 .app 加 inert 不会波及模态本身。
+  useEffect(() => {
+    if (!expanded) return;
+    modalCloseRef.current?.focus();
+    const appEl = document.querySelector(".app");
+    appEl?.setAttribute("inert", "");
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeModal();
+    };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      appEl?.removeAttribute("inert");
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded]);
+
   return (
     <div className="code-block">
-      <pre ref={ref} {...props}>
+      <pre ref={ref} className={className} {...props}>
         {children}
       </pre>
-      {/* aria-label 保持「复制」不变（不随状态切换）：焦点已在按钮上时切名字读屏不会主动播报，
-          且会让 AT「忘记当前按钮是什么」。复制成功的反馈交给下方 aria-live 状态节点。 */}
+      <CopyButton copied={copied} onClick={copy} label={t("copy")} className="code-copy" />
+      {/* 移动端横向滚动看长配置体验差：提供「展开」按钮把代码放进居中卡片、长行自动换行完整呈现。 */}
       <button
+        ref={expandTriggerRef}
         type="button"
-        className="code-copy"
-        onClick={copy}
-        aria-label={t("copy")}
-        data-copied={copied ? "" : undefined}
+        className="code-expand"
+        onClick={() => setExpanded(true)}
+        aria-label={t("expand")}
+        aria-haspopup="dialog"
+        aria-expanded={expanded}
       >
-        {/* 两个图标常驻、原地堆叠，由 CSS 按 data-copied 交叉淡入淡出。
-            不用 {copied ? A : B} 条件渲染：那样图标会在 copied 翻转的瞬间硬切换，
-            而按钮淡出（opacity 0.15s）尚未结束，会闪出一帧「复制」图标。CSS 给复原方向
-            加了 transition-delay，让图标等按钮淡出后再切回，消除这一帧闪烁。 */}
-        <svg className="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <rect x="9" y="9" width="13" height="13" rx="2" />
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-        </svg>
-        <svg className="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M20 6 9 17l-5-5" />
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+          <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+          <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+          <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
         </svg>
       </button>
-      {/* 复制成功的读屏播报：常驻 live region，copied 时填入文案触发 polite 播报。 */}
+      {/* 复制成功的读屏播报：常驻 live region，copied 时填入文案触发 polite 播报。
+          模态打开时 .app 被加 inert（整棵子树移出无障碍树），这份会被屏蔽——
+          那种情形改由下方 portal 内的同款节点播报；此份服务「模态关闭时」的复制。 */}
       <span className="sr-only" role="status" aria-live="polite">
         {copied ? t("copied") : ""}
       </span>
+
+      {expanded &&
+        createPortal(
+          <div
+            className="code-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("expandedLabel")}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) closeModal();
+            }}
+          >
+            <div className="code-modal-panel">
+              {/* 复用同一份高亮后的 children；带上 rehype 注入的 className/style(--shiki-* 变量)，
+                  配色与内联代码块一致。白底换行由 .code-modal-pre 的 CSS 接管（覆盖内联的 nowrap）。 */}
+              <pre className={`code-modal-pre ${className ?? ""}`} {...props}>
+                {children}
+              </pre>
+            </div>
+            <CopyButton
+              copied={copied}
+              onClick={copy}
+              label={t("copy")}
+              className="code-copy code-modal-copy"
+            />
+            <button
+              ref={modalCloseRef}
+              type="button"
+              className="lightbox-close code-modal-close"
+              onClick={closeModal}
+              aria-label={t("close")}
+            >
+              ✕
+            </button>
+            {/* 模态版 live region：随 portal 挂在 <body>、不在 inert 的 .app 子树内，
+                故模态内点复制时 polite 播报能正常发出（内联那份此时被 inert 屏蔽）。 */}
+            <span className="sr-only" role="status" aria-live="polite">
+              {copied ? t("copied") : ""}
+            </span>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

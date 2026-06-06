@@ -39,7 +39,10 @@
   },
   "code": {
     "copy": "Copy",
-    "copied": "Copied"
+    "copied": "Copied",
+    "expand": "Expand",
+    "expandedLabel": "Code viewer",
+    "close": "Close"
   },
   "meta": {
     "about": "About",
