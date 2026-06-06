@@ -655,6 +655,12 @@ hr {
   color: var(--ink);
   border-left-color: var(--ink);
 }
+/* 暗色下基色 --ink-3(L0.58) 对纸色对比偏低、目录发灰；非 active 项单独提亮一档（仍明显暗于
+   active 的 --ink L0.92）。首绘用的就是这个色，故不会「整列变色」、不破坏无闪烁的取舍。
+   active / hover 用更高优先级的规则，不受本条影响。 */
+@media (prefers-color-scheme: dark) {
+  .toc-item { color: oklch(0.68 0.008 85); }
+}
 
 /* ===== About ===== */
 .about-page {

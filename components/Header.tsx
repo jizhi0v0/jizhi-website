@@ -44,8 +44,14 @@ export function Header() {
   useEffect(() => {
     const sync = () => setSuffix(window.location.search + window.location.hash);
     sync();
+    // hashchange 跟 hash；popstate 跟前进/后退与（未来可能的）纯 query 变化，
+    // 两者都刷新 suffix，保证语言切换 href 始终带上当前 search + hash。
     window.addEventListener("hashchange", sync);
-    return () => window.removeEventListener("hashchange", sync);
+    window.addEventListener("popstate", sync);
+    return () => {
+      window.removeEventListener("hashchange", sync);
+      window.removeEventListener("popstate", sync);
+    };
   }, [path]);
 
   return (
