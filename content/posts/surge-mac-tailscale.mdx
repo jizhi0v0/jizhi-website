@@ -18,7 +18,7 @@ dns-server = 223.5.5.5, 119.29.29.29
 
 [Proxy]
 ts-home = tailscale, section-name=Home, underlying-proxy="proxy"
-proxy = 
+proxy = ss, your-server.com, 8388, encrypt-method=chacha20-ietf-poly1305, password=YOUR_PASSWORD
 
 [Rule]
 DOMAIN-SUFFIX,tailXXXXXX.ts.net,ts-home # Full domain 的后缀
@@ -39,7 +39,7 @@ prefer-ipv6 = true
 **`[Proxy]` 里的 `ts-home`** 是一条 Tailscale 策略：
 
 - `section-name=Home` 指向下面的 `[Tailscale Home]` 段，两边名字要对上。
-- `underlying-proxy="proxy"` 让 control 与 DERP 的流量再套一层出站代理，`"proxy"` 是你自己已有的某条普通策略的名字（上面的 `proxy =` 需要你补成真实节点）。
+- `underlying-proxy="proxy"` 让 control 与 DERP 的流量再套一层出站代理，`"proxy"` 指向下面那条出站策略。例子给的是一个 Shadowsocks 节点——Surge 用逗号分隔的字段格式（`ss, host, 端口, encrypt-method=…, password=…`），并不直接吃 `ss://` 链接，把字段换成你自己的即可；也可以换成任意其它协议的策略。
 
 **`[Rule]`** 决定哪些流量进 tailnet：
 

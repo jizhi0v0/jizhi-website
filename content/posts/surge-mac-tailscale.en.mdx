@@ -18,7 +18,7 @@ dns-server = 223.5.5.5, 119.29.29.29
 
 [Proxy]
 ts-home = tailscale, section-name=Home, underlying-proxy="proxy"
-proxy = 
+proxy = ss, your-server.com, 8388, encrypt-method=chacha20-ietf-poly1305, password=YOUR_PASSWORD
 
 [Rule]
 DOMAIN-SUFFIX,tailXXXXXX.ts.net,ts-home # the full-domain suffix
@@ -39,7 +39,7 @@ prefer-ipv6 = true
 **`ts-home` under `[Proxy]`** is a Tailscale policy:
 
 - `section-name=Home` points at the `[Tailscale Home]` section below — the names have to match.
-- `underlying-proxy="proxy"` wraps the control and DERP traffic in an outbound proxy; `"proxy"` is the name of one of your own existing ordinary policies (the empty `proxy =` above is yours to fill in with a real node).
+- `underlying-proxy="proxy"` wraps the control and DERP traffic in an outbound proxy; `"proxy"` points at the outbound policy below. The example is a Shadowsocks node — Surge uses comma-separated fields (`ss, host, port, encrypt-method=…, password=…`), not a raw `ss://` URL — so fill in your own values, or swap it for any other protocol's policy.
 
 **`[Rule]`** decides what enters the tailnet:
 
