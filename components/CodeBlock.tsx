@@ -15,27 +15,61 @@ function codeText(pre: HTMLElement): string {
   return pre.querySelector("code")?.textContent ?? "";
 }
 
+// navigator.clipboard.writeText 会在「文档未聚焦」(NotAllowedError)、非安全上下文、
+// 被 Permissions-Policy 拦截等情况下拒绝——此时复制其实没发生、按钮却拿不到成功反馈。
+// 退回 execCommand("copy")：它只需选区 + 用户手势（点击即满足），不要求文档聚焦，
+// 覆盖前者失败的场景。返回是否真的复制成功，供调用方决定要不要给「已复制」反馈。
+function legacyCopy(text: string): boolean {
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.readOnly = true;
+    ta.style.cssText =
+      "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 export function CodeBlock({ children, ...props }: ComponentPropsWithoutRef<"pre">) {
   const ref = useRef<HTMLPreElement>(null);
   const timer = useRef<number | undefined>(undefined);
+  const mounted = useRef(true);
   const [copied, setCopied] = useState(false);
   const t = useTranslations("code");
 
-  // 卸载时清掉未触发的回退计时器，避免对已卸载组件 setState。
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  // 卸载时停掉回退计时器、标记已卸载，避免 async 复制 resolve 后对已卸载组件 setState。
+  useEffect(() => {
+    return () => {
+      mounted.current = false;
+      window.clearTimeout(timer.current);
+    };
+  }, []);
 
   const copy = async () => {
     const pre = ref.current;
     if (!pre) return;
+    const text = codeText(pre);
+    let ok = false;
     try {
-      await navigator.clipboard.writeText(codeText(pre));
-      setCopied(true);
-      // 连点时重置 1.5s 窗口，而非叠加多个计时器。
-      window.clearTimeout(timer.current);
-      timer.current = window.setTimeout(() => setCopied(false), 1500);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      }
     } catch {
-      // clipboard 在非安全上下文 / 无权限时不可用，静默失败。
+      // 安全上下文里也可能因「文档未聚焦」等被拒，落到下面的 execCommand 兜底。
     }
+    if (!ok) ok = legacyCopy(text);
+    if (!ok || !mounted.current) return; // 真失败不给假反馈；已卸载不 setState
+    setCopied(true);
+    // 连点时重置 1.5s 窗口，而非叠加多个计时器。
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setCopied(false), 1500);
   };
 
   return (
