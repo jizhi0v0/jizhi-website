@@ -1,6 +1,7 @@
 ---
 title: Joining Tailscale with Surge Mac
 date: 2026-06-06
+updated: 2026-06-15
 category: Tools
 tags: [Surge, Tailscale, Networking]
 excerpt: A minimal config you can use as-is
@@ -31,7 +32,7 @@ FINAL,DIRECT
 auth-key = tskey-auth-....
 hostname = surge-mac
 dns-server = 8.8.8.8, 1.1.1.1
-prefer-ipv6 = true
+prefer-ipv6 = false
 ```
 
 ## Walking through it
@@ -58,7 +59,7 @@ prefer-ipv6 = true
 - `hostname` is the device name shown in the tailnet; omit it and one is generated.
 - `dns-server` / `prefer-ipv6` set the DNS this policy uses and whether to prefer IPv6.
 
-## Three easy things to miss
+## Four easy things to miss
 
 1. **Swap the MagicDNS suffix for your own.** `tailXXXXXX.ts.net` is just the example tailnet name; every account's is different. In any device's *Tailscale addresses* (in the console or the Mac app), the second half of the MagicDNS name `hostname.tailXXXXXX.ts.net` is your suffix. Replace `tailXXXXXX.ts.net` in the rule with it. `100.64.0.0/10` and `fd7a:115c:a1e0::/48` are fixed ranges — leave them alone.
 
@@ -69,6 +70,8 @@ prefer-ipv6 = true
    ![Tailscale console Settings → Keys, click Generate auth key](/posts/surge-mac-tailscale/auth-key.png)
 
 3. **Prefer setting `underlying-proxy`.** Without an underlying proxy, control / DERP often fail to connect and the handshake stalls. Point it at an ordinary policy that gets out cleanly and the connection is far more stable.
+
+4. **`prefer-ipv6` depends on your service.** Set `true` only if the target service listens on IPv6; otherwise keep it `false` and stay on v4. With `true`, Surge resolves MagicDNS names to `fd7a:...`, and many self-hosted services only listen on v4 — so the connection fails.
 
 ## Limitations
 

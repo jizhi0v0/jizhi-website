@@ -1,6 +1,7 @@
 ---
 title: 用 Surge Mac 接入 Tailscale
 date: 2026-06-06
+updated: 2026-06-15
 category: 工具
 tags: [Surge, Tailscale, 网络]
 excerpt: 一份能直接用的最小配置
@@ -31,7 +32,7 @@ FINAL,DIRECT
 auth-key = tskey-auth-....
 hostname = surge-mac
 dns-server = 8.8.8.8, 1.1.1.1
-prefer-ipv6 = true
+prefer-ipv6 = false
 ```
 
 ## 配置详解
@@ -58,7 +59,7 @@ prefer-ipv6 = true
 - `hostname` 是在 tailnet 里显示的设备名，留空则自动生成。
 - `dns-server` / `prefer-ipv6` 设定这条策略用的 DNS 与是否优先 IPv6。
 
-## 三个容易踩的点
+## 四个容易踩的点
 
 1. **MagicDNS 后缀要换成你自己的。** `tailXXXXXX.ts.net` 是示例里的 tailnet 名，每个账号都不同。在 Tailscale 后台（或 Mac 客户端）任意一台机器的 *Tailscale addresses* 里，MagicDNS 那行 `主机名.tailXXXXXX.ts.net` 后半段就是你的后缀，替换规则里的 `tailXXXXXX.ts.net`。`100.64.0.0/10` 和 `fd7a:115c:a1e0::/48` 是固定段，不用动。
 
@@ -69,6 +70,8 @@ prefer-ipv6 = true
    ![Tailscale 后台 Settings → Keys，点 Generate auth key 生成](/posts/surge-mac-tailscale/auth-key.png)
 
 3. **优先挂 `underlying-proxy`。** 不套底层代理时，control / DERP 经常连不上，握手卡住。指到一条能正常出网的普通策略上，连接稳定很多。
+
+4. **`prefer-ipv6` 看服务。** 目标服务监听 IPv6 才置 `true`，否则保持 `false` 走 v4。置 `true` 时 Surge 会把 MagicDNS 名解析到 `fd7a:...`，而不少自建服务只监听 v4，于是连不上。
 
 ## 局限
 
