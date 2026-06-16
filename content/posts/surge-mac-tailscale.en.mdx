@@ -1,7 +1,7 @@
 ---
 title: Joining Tailscale with Surge Mac
 date: 2026-06-06
-updated: 2026-06-16
+updated: 2026-06-15
 category: Tools
 tags: [Surge, Tailscale, Networking]
 excerpt: A minimal config you can use as-is
@@ -75,8 +75,6 @@ prefer-ipv6 = false
    ```
 
    Replace `proxy` with your own node (Surge's comma-separated fields, not a raw `ss://` URL; any protocol works).
-
-   One more thing worth ruling out while you're here: if rules match and MagicDNS resolves to a 100.x address yet the connection still times out, check the Tailscale console for multiple leftover Surge nodes under the same name. Surge's built-in Tailscale is its own node identity, so repeatedly changing `auth-key` / `hostname` or reloading can leave old devices behind; removing the stale `surge-*` nodes and reconnecting rules out node-state confusion.
 
 4. **`prefer-ipv6` depends on your service.** Set `true` only if the target service listens on IPv6; otherwise keep it `false` and stay on v4. With `true`, Surge resolves MagicDNS names to `fd7a:...`, and many self-hosted services only listen on v4 — so the connection fails.
 

@@ -1,7 +1,7 @@
 ---
 title: 用 Surge Mac 接入 Tailscale
 date: 2026-06-06
-updated: 2026-06-16
+updated: 2026-06-15
 category: 工具
 tags: [Surge, Tailscale, 网络]
 excerpt: 一份能直接用的最小配置
@@ -75,8 +75,6 @@ prefer-ipv6 = false
    ```
 
    `proxy` 换成你自己的节点（Surge 逗号分隔字段，不吃 `ss://` 链接，任意协议都行）。
-
-   还有一种情况值得顺手排除：规则命中、MagicDNS 也解析到了 100.x，却仍 timeout 时，去 Tailscale 后台看看是不是有多个同名的 Surge 节点残留。Surge 内建 Tailscale 是独立节点，反复改 `auth-key` / `hostname` 或 reload 后可能留下旧设备，清掉旧的 `surge-*` 节点再重连，能排掉节点状态混乱这一类问题。
 
 4. **`prefer-ipv6` 看服务。** 目标服务监听 IPv6 才置 `true`，否则保持 `false` 走 v4。置 `true` 时 Surge 会把 MagicDNS 名解析到 `fd7a:...`，而不少自建服务只监听 v4，于是连不上。
 
