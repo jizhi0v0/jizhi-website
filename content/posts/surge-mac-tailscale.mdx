@@ -49,7 +49,7 @@ prefer-ipv6 = false
 - `no-resolve` 避免为纯 IP 规则做多余的 DNS 解析。
 - `FINAL,DIRECT` 兜底，其余流量直连。
 
-> 不用纠结要不要再补规则：`100.64.0.0/10` 和 `fd7a:115c:a1e0::/48` 是 Tailscale 的两个超集，节点地址、MagicDNS 解析器 `100.100.100.100`、IPv6 服务地址 `fd7a:115c:a1e0::53`、4via6 隧道段等全都落在这两段里，已经覆盖。真正在它们之外、需要你自己再加 `IP-CIDR` 的只有两类：上面的**子网路由**，以及把 Surge 当 **exit node** 全量出网时的 `0.0.0.0/0` / `::/0`（那超出"最小内网接入"的范畴）。
+> 不用纠结要不要再补规则：`100.64.0.0/10` 和 `fd7a:115c:a1e0::/48` 是 Tailscale 的两个超集，节点地址、MagicDNS 解析器 `100.100.100.100`、IPv6 服务地址 `fd7a:115c:a1e0::53`、4via6 隧道段等全都落在这两段里，已经覆盖。真正在它们之外、需要你自己再加 `IP-CIDR` 的，只有上面的**子网路由**那一类。
 
 **`[Tailscale Home]`** 是节点本身：
 
@@ -81,4 +81,5 @@ prefer-ipv6 = false
 ## 局限
 
 - 只支持 TCP 形态的 control 与 DERP 路径，没有 UDP 直连。
+- 只能作为客户端主动访问 tailnet。官方策略参数仅 `auth-key` / `hostname` / `control-url` / `mtu` / `dns-server` / `prefer-ipv6`，没有 `advertise-routes` / `exit-node` 之类——当不了 exit node 或 subnet router，别的设备没法经这台 Surge 出网或访问它背后的局域网。
 - 仍是 beta。当临时、按规则分流的内网入口够用；想要完整 Tailscale 体验还是装官方客户端。

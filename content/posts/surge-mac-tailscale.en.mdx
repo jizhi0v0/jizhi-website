@@ -49,7 +49,7 @@ prefer-ipv6 = false
 - `no-resolve` skips a pointless DNS lookup for pure-IP rules.
 - `FINAL,DIRECT` is the catch-all; everything else goes direct.
 
-> Don't agonize over whether more rules are needed: `100.64.0.0/10` and `fd7a:115c:a1e0::/48` are Tailscale's two supersets. Node addresses, the MagicDNS resolver `100.100.100.100`, the IPv6 service address `fd7a:115c:a1e0::53`, the 4via6 tunnel range — they all fall inside these two, already covered. The only things outside them that you'd add an `IP-CIDR` for are the **subnet route** above, and `0.0.0.0/0` / `::/0` if you use Surge as a full **exit node** (which is beyond "minimal internal access").
+> Don't agonize over whether more rules are needed: `100.64.0.0/10` and `fd7a:115c:a1e0::/48` are Tailscale's two supersets. Node addresses, the MagicDNS resolver `100.100.100.100`, the IPv6 service address `fd7a:115c:a1e0::53`, the 4via6 tunnel range — they all fall inside these two, already covered. The only thing outside them that you'd add an `IP-CIDR` for is the **subnet route** above.
 
 **`[Tailscale Home]`** is the node itself:
 
@@ -81,4 +81,5 @@ prefer-ipv6 = false
 ## Limitations
 
 - Only TCP-based control and DERP paths are supported — no UDP direct path.
+- It only acts as a client reaching into the tailnet. The policy supports just `auth-key` / `hostname` / `control-url` / `mtu` / `dns-server` / `prefer-ipv6` — no `advertise-routes` / `exit-node` and the like — so it can't be an exit node or subnet router, and other devices can't route out through this Surge instance or reach the LAN behind it.
 - It's still beta. It's enough as a lightweight, rule-driven entry into your internal network; for the full Tailscale experience, install the official client.
