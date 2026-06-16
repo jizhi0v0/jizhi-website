@@ -9,7 +9,7 @@ excerpt: A minimal config you can use as-is
 
 As of Surge Mac 6.7.0, Tailscale is built in as a proxy policy. You no longer run a separate Tailscale client — Surge itself joins the tailnet as a node, then routes matched traffic to machines inside it. Reaching internal devices, the NAS back home, a dev box — all go through this policy. Here's a minimal config you can copy verbatim.
 
-> Requires Surge Mac 6.7.0+. Note that 6.7.0 (11310) currently ships on the **beta channel** — switch Surge's update channel to beta to receive it. iOS has supported it since Surge iOS 5.102.0 (3730), though there the connection is lazy — it only dials the tailnet on your first request to a tailnet domain, so until then the node shows as not connected (not green) in the Tailscale console, turning green after a request; that's expected. It's still an early beta — only TCP-based control / DERP paths are supported, UDP direct paths are not, and the occasional crash is expected.
+> Requires Surge Mac 6.7.0+. Note that 6.7.0 (11310) currently ships on the **beta channel** — switch Surge's update channel to beta to receive it. iOS has supported it since Surge iOS 5.102.0 (3730), though there the connection is lazy — it only dials the tailnet on your first request to a tailnet domain, so until then the node shows as not connected (not green) in the Tailscale console, turning green after a request; that's expected. It's still an early beta — only TCP-based control / DERP paths are supported, UDP direct paths are not.
 
 ## Minimal config
 
@@ -81,4 +81,4 @@ prefer-ipv6 = false
 ## Limitations
 
 - Only TCP-based control and DERP paths are supported — no UDP direct path.
-- It's still beta and crashes now and then. It's enough as a lightweight, rule-driven entry into your internal network; for the full Tailscale experience, install the official client — it coexists with Surge's built-in node just fine, with no extra config.
+- It's still beta. It's enough as a lightweight, rule-driven entry into your internal network; for the full Tailscale experience, install the official client — it coexists with Surge's built-in node just fine, with no extra config.
