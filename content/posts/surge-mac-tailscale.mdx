@@ -9,7 +9,7 @@ excerpt: 一份能直接用的最小配置
 
 Surge Mac 6.7.0 起把 Tailscale 作为一种 proxy policy 内置了进来。不用再单独跑 Tailscale 客户端，Surge 自己作为一个节点加入 tailnet（和官方 Tailscale 客户端也能共存、互不干扰，无需额外配置），然后用规则把命中的流量丢给 tailnet 里的机器——访问内网设备、回家里的 NAS、连开发机，都走这条策略。下面是一份能直接抄的最小配置。
 
-> 要求 Surge Mac 6.7.0+。注意 6.7.0 (11310) 目前走 **beta 渠道**，得在 Surge 设置里把更新通道切到 beta 才能收到。iOS 端从 Surge iOS 5.102.0 (3730) 起也已支持，但那边连接是按需的——只在首次访问 tailnet 域名时才发起，在那之前 Tailscale 后台里该节点不是绿的（未连接），请求后才转绿，属正常。目前还是 early beta，只走 TCP 形态的 control / DERP，不实现 UDP 直连。
+> 要求 Surge Mac 6.7.0+。注意 6.7.0 (11310) 目前走 **beta 渠道**，得在 Surge 设置里把更新通道切到 beta 才能收到。iOS 端从 Surge iOS 5.102.0 (3730) 起也已支持，但那边连接是按需的——只在首次访问 tailnet 域名时才发起（之后保持连接），在那之前 Tailscale 后台里该节点不是绿的（未连接），请求后才转绿，属正常。目前还是 early beta，只走 TCP 形态的 control / DERP，不实现 UDP 直连。
 
 ## 最小配置
 
@@ -42,7 +42,7 @@ prefer-ipv6 = false
 
 **`[Rule]`** 决定哪些流量进 tailnet：
 
-- `DOMAIN-SUFFIX,tailXXXXXX.ts.net` 命中 MagicDNS 域名。Surge 虽然实现了 MagicDNS，但仍需要显式用规则把它路由进 Tailscale 策略。
+- `DOMAIN-SUFFIX,tailXXXXXX.ts.net` 命中 MagicDNS 域名。Surge 能解析 MagicDNS 名，但仍需要显式用规则把它路由进 Tailscale 策略。
 - `IP-CIDR,100.64.0.0/10` 是 Tailscale 给节点分配的 100.x 地址段（CGNAT 段），固定不变。
 - `IP-CIDR6,fd7a:115c:a1e0::/48` 是 Tailscale 的 IPv6 段，对所有 tailnet 都一样，照抄即可。
 - `IP-CIDR,192.168.50.0/24` 是子网路由（subnet route）的例子：tailnet 里某台机器用 `tailscale set --advertise-routes=192.168.50.0/24` 把家里的局域网段广播出来、并在 Tailscale 后台 *Machines* 里批准这条路由后，再加一条对应网段的规则，就能直接访问那些没装 Tailscale 的设备。没有子网就删掉这行。
@@ -70,7 +70,7 @@ prefer-ipv6 = false
 3. **`underlying-proxy` 按需再挂。** 不套底层代理通常也连得上，它不是必需的。第一次连接可能要冷启动，先等一下；真连不上，再给 `ts-home` 加 `underlying-proxy`、补一条出站策略：
 
    ```ini
-   ts-home = tailscale, section-name=Home, underlying-proxy="proxy"
+   ts-home = tailscale, section-name=Home, underlying-proxy=proxy
    proxy = ss, your-server.com, 8388, encrypt-method=chacha20-ietf-poly1305, password=YOUR_PASSWORD
    ```
 

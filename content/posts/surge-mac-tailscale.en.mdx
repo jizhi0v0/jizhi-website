@@ -9,7 +9,7 @@ excerpt: A minimal config you can use as-is
 
 As of Surge Mac 6.7.0, Tailscale is built in as a proxy policy. You no longer run a separate Tailscale client — Surge itself joins the tailnet as a node (and coexists with the official Tailscale client too — they don't interfere, and no extra config is needed), then routes matched traffic to machines inside it. Reaching internal devices, the NAS back home, a dev box — all go through this policy. Here's a minimal config you can copy verbatim.
 
-> Requires Surge Mac 6.7.0+. Note that 6.7.0 (11310) currently ships on the **beta channel** — switch Surge's update channel to beta to receive it. iOS has supported it since Surge iOS 5.102.0 (3730), though there the connection is lazy — it only dials the tailnet on your first request to a tailnet domain, so until then the node shows as not connected (not green) in the Tailscale console, turning green after a request; that's expected. It's still an early beta — only TCP-based control / DERP paths are supported, UDP direct paths are not.
+> Requires Surge Mac 6.7.0+. Note that 6.7.0 (11310) currently ships on the **beta channel** — switch Surge's update channel to beta to receive it. iOS has supported it since Surge iOS 5.102.0 (3730), though there the connection is lazy — it only dials the tailnet on your first request to a tailnet domain (and stays connected afterward), so until then the node shows as not connected (not green) in the Tailscale console, turning green after a request; that's expected. It's still an early beta — only TCP-based control / DERP paths are supported, UDP direct paths are not.
 
 ## Minimal config
 
@@ -42,7 +42,7 @@ prefer-ipv6 = false
 
 **`[Rule]`** decides what enters the tailnet:
 
-- `DOMAIN-SUFFIX,tailXXXXXX.ts.net` matches MagicDNS names. Surge implements MagicDNS, but you still need an explicit rule to route it into the Tailscale policy.
+- `DOMAIN-SUFFIX,tailXXXXXX.ts.net` matches MagicDNS names. Surge can resolve MagicDNS names, but you still need an explicit rule to route them into the Tailscale policy.
 - `IP-CIDR,100.64.0.0/10` is the 100.x range (CGNAT) Tailscale assigns to nodes — fixed for everyone.
 - `IP-CIDR6,fd7a:115c:a1e0::/48` is Tailscale's IPv6 range, identical across all tailnets — copy it as-is.
 - `IP-CIDR,192.168.50.0/24` is an example subnet route: once a machine in the tailnet advertises your home LAN with `tailscale set --advertise-routes=192.168.50.0/24` and you approve that route on the console's *Machines* page, adding a rule for that range lets you reach devices that don't run Tailscale at all. Drop this line if you have no subnet.
@@ -70,7 +70,7 @@ prefer-ipv6 = false
 3. **Add `underlying-proxy` only when you need it.** It usually connects fine without one, so it isn't required. The first connection may need a cold start, so give it a moment; only if it really won't connect, add `underlying-proxy` to `ts-home` and point it at an outbound policy:
 
    ```ini
-   ts-home = tailscale, section-name=Home, underlying-proxy="proxy"
+   ts-home = tailscale, section-name=Home, underlying-proxy=proxy
    proxy = ss, your-server.com, 8388, encrypt-method=chacha20-ietf-poly1305, password=YOUR_PASSWORD
    ```
 
