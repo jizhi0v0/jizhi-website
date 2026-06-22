@@ -1,0 +1,40 @@
+---
+title: "NotchBadge: Hang Your App Badges Under the Dynamic Island"
+date: 2026-06-22
+category: Tools
+tags: [macOS, Swift]
+excerpt: I auto-hide the Dock for a bigger view, but the menu bar keeps running out — and I can't fully hide it without missing messages. So I read the app badges and hang them under the Dynamic Island.
+---
+
+I keep my Dock auto-hidden for a bigger view, flicking my mouse to the bottom when I need it. But the menu bar just keeps running out of room. macOS 26 lets you toggle individual apps in the menu bar on or off, but there's always that nagging worry — so I keep the apps that matter showing, afraid I'd otherwise miss a message.
+
+So an idea hit me: what if I read those apps' **badges** and hang them under the **Dynamic Island**? I use Alcove (a Dynamic Island simulator) every day, so this can't be a Dynamic Island app itself — instead, let it **dangle below the island**, coexisting with Alcove. That way I can safely pull some apps out of the menu bar.
+
+That's **NotchBadge**.
+
+<video className="post-video" src="/posts/notchbadge/demo.mp4" poster="/posts/notchbadge/demo-poster.jpg" controls loop muted playsInline autoPlay preload="metadata" />
+
+## Design: an old pull-chain lamp
+
+The inspiration is an old pull-chain lamp. Each app with a badge hangs under the notch on a thin thread:
+
+- **It swings when the badge changes** — a little pendulum sway, so you catch a new message out of the corner of your eye.
+- **Click** to jump straight to the app.
+- **Pull it down to "tuck away"** (like pulling a lamp off) — the icon shrinks back up against the notch; pull again to bring it back. An icon covering a browser tab? Pull it down and it's gone; there's also a "Suspend All" in the menu.
+
+A few other small touches:
+
+- Apps with a Dock badge are **collected automatically**, and drop off once the badge clears.
+- **The app you're currently in isn't shown** — you're already looking at it in the foreground, no need for it to crowd the notch.
+- The thread fades top-to-bottom, so it disappears over tab-bar text instead of cutting across it.
+- One menu-bar icon: Check for Updates / Launch at Login / Quit.
+
+## How it works
+
+Getting "another app's badge" doesn't need a private API. Dock badges are readable via Accessibility: in `com.apple.dock`'s AX tree, each icon is an `AXApplicationDockItem`, whose `AXStatusLabel` is the number in the red circle and whose `AXURL` is the app path (used to fetch the icon and open it). A short poll gets you everything.
+
+For placement, notch height varies by model and resolution, so nothing is hardcoded: vertically it uses `safeAreaInsets.top` (the notch's real height at the current resolution) to find the notch bottom, horizontally it hangs at screen center (the notch is always centered); with multiple displays it auto-picks the one that has a notch.
+
+## Download
+
+[NotchBadge Releases](https://github.com/jizhi0v0/duo-notchbadge-releases) — grab the dmg, drag it into Applications, grant it Accessibility once on first launch. Requires macOS 14+.

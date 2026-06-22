@@ -430,6 +430,16 @@ hr {
   cursor: zoom-in;
 }
 
+/* MDX 视频：演示录屏，占满正文宽度（不像截图那样限 540px） */
+.post-body .post-video {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  margin: 1.4em 0;
+}
+
 /* 多图横排：相邻多张图自动并排，等宽分配，按各自比例自然缩放 */
 .post-body .img-row {
   display: flex;
