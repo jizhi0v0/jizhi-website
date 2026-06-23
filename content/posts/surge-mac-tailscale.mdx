@@ -1,7 +1,7 @@
 ---
 title: 用 Surge Mac 接入 Tailscale
 date: 2026-06-06
-updated: 2026-06-16
+updated: 2026-06-23
 category: 工具
 tags: [Surge, Tailscale, 网络]
 excerpt: 一份能直接用的最小配置
@@ -57,7 +57,7 @@ prefer-ipv6 = false
 - `hostname` 是在 tailnet 里显示的设备名，留空则自动生成。
 - `dns-server` / `prefer-ipv6` 设定这条策略用的 DNS 与是否优先 IPv6。
 
-## 四个容易踩的点
+## 五个容易踩的点
 
 1. **MagicDNS 后缀要换成你自己的。** `tailXXXXXX.ts.net` 是示例里的 tailnet 名，每个账号都不同。在 Tailscale 后台（或 Mac 客户端）任意一台机器的 *Tailscale addresses* 里，MagicDNS 那行 `主机名.tailXXXXXX.ts.net` 后半段就是你的后缀，替换规则里的 `tailXXXXXX.ts.net`。`100.64.0.0/10` 和 `fd7a:115c:a1e0::/48` 是固定段，不用动。
 
@@ -76,7 +76,37 @@ prefer-ipv6 = false
 
    `proxy` 换成你自己的节点（Surge 逗号分隔字段，不吃 `ss://` 链接，任意协议都行）。
 
+   控制面 / DERP 被墙的网络（如中国大陆）是例外：内嵌节点冷启动握手够不到 Tailscale 服务器，`underlying-proxy` 往往是**必需**的，典型表现是流量已经命中 `Policy: ts-home` 却一直连接超时。这时挂一个能稳定出网的策略再 reload。
+
 4. **`prefer-ipv6` 看服务。** 目标服务监听 IPv6 才置 `true`，否则保持 `false` 走 v4。置 `true` 时 Surge 会把 MagicDNS 名解析到 `fd7a:...`，而不少自建服务只监听 v4，于是连不上。
+
+5. **`skip-proxy` 里别留 tailnet 段。** 如果 `[General]` 的 `skip-proxy` 含 `*.ts.net` 或 `100.64.0.0/10`（有些配置为了让官方客户端直管 tailnet 会这么写），这些流量会整段绕过 Surge，上面的 `ts-home` 规则根本不触发——表现为请求直连、压根没命中策略。改用 Surge 内嵌 Tailscale 时，把这两项从 `skip-proxy` 删掉。
+
+## 交给 Claude 自动配
+
+不想一行行手动改，可以把下面这段提示词丢给 Claude Code（或别的能在你 Mac 上跑命令的 LLM agent），让它照着上面的配置帮你接好：
+
+```text
+你是帮我配 Surge Mac 的助手，目标是在我的 Surge 配置里接入 Tailscale，让我能按规则访问 tailnet 里的设备。配置以这篇文章为准：https://www.jizhiovo.com/posts/surge-mac-tailscale
+
+请始终遵守这几条：
+- 在我明确同意「合并」之前，绝不动我选定的那份原 profile——所有改动都只在它的备份副本上做。
+- 别读 [General]、[Proxy] 这些段落的正文，里面可能有 auth-key、password 等敏感值——定位段落用 grep 看标题行就够，新内容插在标题的下一行。
+- 每改一次 conf 都先做语法检查，通过了才让我 reload。
+- 凡是写着「停下确认」的地方，等我回复后再继续，别自己往下跑。
+- 缺信息（要填的值、要访问的地址等）就问我，别瞎猜。
+
+步骤：
+1. 预检版本：确认这台 Surge Mac 支持 Tailscale（需 6.7.0+）。不支持就让我把更新通道切到 beta、装最新版，然后停下。
+2. 装 Surge 自带的 skill：把 /Applications/Surge.app/Contents/Resources/Skills/ 里的 skill 用符号链接（symlink）装到我的 skills 目录，这样它能随 Surge 一起更新。如果这个目录不存在，基本就是版本不支持，回到第 1 步。
+3. 列出你能找到的 profile（Surge profile 目录下的 .conf 文件），把路径列给我让我选一份——CLI 看不出当前激活的是哪个，别替我猜。停下确认：等我选定再继续。
+4. 我确认后，先把这份 conf 复制一份做备份，之后只改备份。按文章操作：用 grep 找到 [Proxy] 和 [Rule] 的标题行，把 ts-home 策略插到 [Proxy] 下一行、对应的路由规则插到 [Rule] 标题的下一行（排在最前，优先匹配），再把 [Tailscale ...] 段追加到文件末尾；全程别读这两段已有的正文。再 grep 一下 [General] 的 skip-proxy 这行，含 *.ts.net 或 100.64.0.0/10 就从备份里删掉，否则 tailnet 流量绕过 Surge、规则不生效。注意：如果 [Rule] 段正文是 #!include 另一个文件（规则在被包含的文件里），把规则插在标题下一行会让规则块不以 FINAL 收尾、语法检查报错——这时改成把规则加到被包含文件规则链的最前面，并对那个文件也复制一份副本、把 include 改指向副本。改完做语法检查。
+5. 语法没问题就用默认编辑器打开备份。我要填两个东西：auth-key 和 MagicDNS（Full domain）后缀。MagicDNS 后缀如果我本机装了 Tailscale，你可以用 tailscale 命令读出来替我填；auth-key 本地拿不到，得我去 Tailscale 后台 Settings → Keys 生成，你提醒我填上就行。
+6. 让我在 Surge 里切到这份备份、reload。然后验证：访问一台远端 tailnet 设备上的服务；你没有现成地址就问我要一个 URL。
+7. 如果本机有 Tailscale，顺便确认这台 Surge 的 hostname 已注册进 tailnet、状态是 connected。
+8. 发真实请求验证。第一次冷启动会慢，至少试两次。仍连不上，就问我有没有可用的代理来转发，让我给出它在配置里的策略名，给对应的 Tailscale 策略加上 underlying-proxy，然后重新验证。
+9. 验证通过后，停下确认：问我要不要把改动合并回原 profile——要就用 mv 把备份覆盖原 conf，不要就两份都留着。
+```
 
 ## 局限
 

@@ -1,7 +1,7 @@
 ---
 title: Joining Tailscale with Surge Mac
 date: 2026-06-06
-updated: 2026-06-16
+updated: 2026-06-23
 category: Tools
 tags: [Surge, Tailscale, Networking]
 excerpt: A minimal config you can use as-is
@@ -57,7 +57,7 @@ prefer-ipv6 = false
 - `hostname` is the device name shown in the tailnet; omit it and one is generated.
 - `dns-server` / `prefer-ipv6` set the DNS this policy uses and whether to prefer IPv6.
 
-## Four easy things to miss
+## Five easy things to miss
 
 1. **Swap the MagicDNS suffix for your own.** `tailXXXXXX.ts.net` is just the example tailnet name; every account's is different. In any device's *Tailscale addresses* (in the console or the Mac app), the second half of the MagicDNS name `hostname.tailXXXXXX.ts.net` is your suffix. Replace `tailXXXXXX.ts.net` in the rule with it. `100.64.0.0/10` and `fd7a:115c:a1e0::/48` are fixed ranges — leave them alone.
 
@@ -76,7 +76,37 @@ prefer-ipv6 = false
 
    Replace `proxy` with your own node (Surge's comma-separated fields, not a raw `ss://` URL; any protocol works).
 
+   Networks that block Tailscale's control plane / DERP (e.g. mainland China) are the exception: the embedded node's cold-start handshake can't reach Tailscale's servers, so `underlying-proxy` is usually **required** — the tell-tale sign is traffic already matching `Policy: ts-home` yet timing out. Point it at a policy with reliable egress and reload.
+
 4. **`prefer-ipv6` depends on your service.** Set `true` only if the target service listens on IPv6; otherwise keep it `false` and stay on v4. With `true`, Surge resolves MagicDNS names to `fd7a:...`, and many self-hosted services only listen on v4 — so the connection fails.
+
+5. **Don't leave tailnet ranges in `skip-proxy`.** If `[General]`'s `skip-proxy` contains `*.ts.net` or `100.64.0.0/10` (some configs add these so the official client owns the tailnet), that traffic bypasses Surge entirely and the `ts-home` rules above never fire — you'll see requests go direct, matching no policy at all. When switching to Surge's built-in Tailscale, remove both from `skip-proxy`.
+
+## Let Claude set it up
+
+Rather than editing line by line, hand the prompt below to Claude Code (or any other LLM agent that can run commands on your Mac) and let it wire things up following the config above:
+
+```text
+You're helping me configure Surge Mac. The goal: add Tailscale to my Surge config so I can reach devices inside my tailnet by rule. Treat this article as the source of truth for the config: https://www.jizhiovo.com/posts/surge-mac-tailscale
+
+Always follow these:
+- Never touch the original profile I pick until I explicitly approve the merge — make all edits on a backup copy.
+- Don't read the bodies of sections like [General] or [Proxy] — they can hold auth-keys, passwords, and other secrets. Locating a section needs only a grep of its header line; put new content on the line below the header.
+- Re-check the conf syntax after every edit; only have me reload once it passes.
+- Wherever it says "pause for confirmation," wait for my reply before continuing — don't run ahead.
+- If you're missing something (a value to fill in, an address to hit), ask me — don't guess.
+
+Steps:
+1. Preflight the version: confirm this Surge Mac supports Tailscale (needs 6.7.0+). If not, tell me to switch the update channel to beta and install the latest build, then stop.
+2. Install the skill Surge ships: symlink the skill in /Applications/Surge.app/Contents/Resources/Skills/ into my skills directory so it updates along with Surge. If that directory doesn't exist, the version most likely doesn't support this — go back to step 1.
+3. List the profiles you can find (the .conf files in the Surge profile directory) and have me pick which one to work on — the CLI can't tell which profile is currently active, so don't guess. Pause for confirmation: wait until I've chosen.
+4. Once I confirm, copy the conf to a backup and only edit the backup from here on. Following the article: use grep to find the [Proxy] and [Rule] header lines, insert the ts-home policy on the line below [Proxy] and the matching routing rules on the line below [Rule] (put them first, so they match before other rules), then append the [Tailscale ...] section at the end of the file — without reading the existing bodies of those sections. Also grep [General]'s skip-proxy line and, if it contains *.ts.net or 100.64.0.0/10, remove those from the backup — otherwise tailnet traffic bypasses Surge and the rules never fire. Note: if the [Rule] body is just an #!include of another file (the rules live in the included file), inserting below the header leaves a rule block that doesn't end in FINAL and the syntax check fails — in that case add the rules at the top of the included file's rule list, and copy that file too, repointing the include at the copy. Then check the syntax.
+5. If the syntax is clean, open the backup in my default editor. I need to fill in two things: the auth-key and the MagicDNS (full-domain) suffix. The suffix you can read via the tailscale CLI and pre-fill if I have Tailscale installed locally; the auth-key can't be pulled locally — I have to generate it in the Tailscale console (Settings → Keys), so just remind me to paste it in.
+6. Have me switch Surge to this backup and reload. Then verify by reaching a service on a remote tailnet device; if you don't have an address, ask me for a URL.
+7. If Tailscale is installed locally, also confirm this Surge node's hostname registered into the tailnet and shows as connected.
+8. Verify with a real request. The first cold start is slow, so try at least twice. If it still won't connect, ask whether I have a usable proxy to forward through, have me give its policy name, add underlying-proxy to the matching Tailscale policy, then re-verify.
+9. Once it works, pause for confirmation: ask whether to merge the changes back into the original profile — if yes, mv the backup over the original conf; if no, keep both.
+```
 
 ## Limitations
 
