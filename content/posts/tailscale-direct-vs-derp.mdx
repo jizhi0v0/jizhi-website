@@ -1,0 +1,101 @@
+---
+title: Tailscale 的 direct 与 DERP：为什么 Surge 只能走中继
+date: 2026-06-27
+category: 工具
+tags: [Tailscale, Surge, sing-box, 网络, WireGuard]
+excerpt: 同一台机器，官方客户端能直连、Surge 内嵌的只能中继——差在哪
+---
+
+配套的实操配置见[〈用 Surge Mac 接入 Tailscale〉](/posts/surge-mac-tailscale)；这篇只回答一个问题：同样从你本机出去，为什么 Surge 内嵌的 Tailscale「有时候能访问有时候不行」，而官方客户端稳？把链路拆开就清楚了。
+
+## 两条路：direct 与 DERP
+
+两台 Tailscale 机器之间有两条路可走：
+
+- **direct**：WireGuard over **UDP**，两端各自在自己的 NAT 上打洞，拿到点对点的直连。
+- **relay**：把 WireGuard 包交给 **DERP** 中继服务器转发；DERP 本质就是一条到中继的 **HTTPS/TCP** 长连接。
+
+两条都把同样的、已加密的 WireGuard 包送到对端，区别只在「直连」还是「绕一道中继」。能 direct 时延迟低、不经第三方；direct 建不起来才退回 DERP。
+
+## direct 难在哪：disco
+
+direct 不是「发个 UDP 包」那么简单。要建立它，客户端得跑 Tailscale 的 **`disco`（discovery）子系统**：
+
+1. 开一个 UDP socket，借 STUN / DERP 探出自己在 NAT 外被看到的公网 `ip:port`；
+2. 通过控制面 / DERP 这条信令通道，和对端交换各自的候选端点；
+3. 双向**同时**对着对方的公网 `ip:port` 发包，把两边 NAT 的洞**同时**打穿；
+4. 之后持续 keepalive，撑住这个 NAT 映射别被回收。
+
+这是一整套 UDP 数据面加状态机。relay 则几乎免费：对一台 DERP 开条 TLS 连接、把包丢进去转发——这正是任何代理引擎时刻在做的事。
+
+## 为什么 Surge 内嵌的只能 relay
+
+Surge 6.7 把 Tailscale 做成了一种 proxy policy，但它是个 **beta 的部分实现**：relay（DERP/TCP）有了，`disco` 那套打洞数据面还没做。于是**不管你的网络 UDP 通不通，它都只能走 relay**。
+
+这一点能在自己机器上印证。装着官方客户端时：
+
+```text
+$ tailscale netcheck
+  * UDP: true                      ← 本机 UDP 没问题
+  * Nearest DERP: Hong Kong
+
+$ tailscale status
+  100.x.x.x  my-mac-mini  ...  active; direct 203.0.113.x:8330   ← 官方客户端拿到了 direct
+```
+
+`UDP: true` 说明能不能 direct **不是网络的锅**；官方 `tailscaled` 是完整实现、两条路都有，所以同一台机器上它能 `direct`，而 Surge 内嵌节点只能 relay。**差距在实现，不在网络。**
+
+## 别急着甩锅 GFW：先验证
+
+relay 慢、甚至连不上，**别默认是被墙**。我这次「连不上」实测下来根本不是 GFW。
+
+绕开 Surge 直连验证（一台只有 IPv4 的本机）：
+
+- 到控制面 `controlplane.tailscale.com`（5/5）+ 香港 DERP（22/22）反复握手，**全通、无一例 reset**，延迟 ~150ms（偏高，但连得上）。
+- 同机的官方客户端在线、与对端 `direct`。
+
+真正的坑在 Surge 日志里：内嵌的 beta 节点在这台**没有 IPv6**（`netcheck` 报 `IPv6: no`）的机器上，把**整张 DERP map 的 IPv6 端点**挨个 `connectx`（Equinix / Linode / Hetzner / DigitalOcean 各地 DERP 的 v6 地址），全部 `No route to host`——一次会话刷了 **4707 条、全是 IPv6、0 条 IPv4**，还伴随几十次连接环路（`Potential loop connections found, break`）。relay 因此一直起不来，对 peer 全是 `Connection aborted / timeout … via Home`。
+
+而且它**既不看**系统的 IPv6 可达性，也**不理会** `ipv6=false`、`ipv6-vif=disabled`、关掉 IPv6 DNS、`prefer-ipv6=false`——全试过，照刷。官方 `tailscaled` 会按 `netcheck` 跳过 v6 端点，内嵌节点没做这个判断。**跟墙无关，是实现 bug**（已报 nssurge）。
+
+修复反而简单：纯 IPv4 网络下别指望内嵌节点，把 `*.ts.net` / `100.64.0.0/10` 用 `skip-proxy` 从 Surge 旁路、交给官方客户端兜底——peer 立刻 52ms 连上。
+
+## ts-home 连不上？排查清单
+
+「流量命中 `Policy: ts-home` 却一直超时 / aborted」有好几种原因，别都当成被墙。按顺序排：
+
+1. **先翻 Surge 日志**（`~/Library/Logs/Surge/Surge-*.log`）。刷大量 `connectx … No route to host`、**全是 IPv6**、还伴随 `Potential loop connections found`？→ 就是上面那个**内嵌节点 IPv6 bug**（纯 IPv4 网络）。`underlying-proxy` 治不了，直接 `skip-proxy` 放行 `*.ts.net` / `100.64.0.0/10`、交给官方客户端。
+2. **绕开 Surge 直连验证**。`tailscale debug derp-map` 拿最近 DERP 的 IP，`curl --noproxy '*' -k --resolve <host>:443:<ip> https://<host>/` 反复几次，再连一次 `controlplane.tailscale.com`。都通、无 reset → **不是被墙**，锅在 Surge；被 reset / 全超时 → 可能真被墙，`underlying-proxy` 才对症。
+3. **同机官方客户端能连吗**？`tailscale netcheck` 看 `IPv6` / UDP，`tailscale status` 看对端是 `direct` 还是 `relay`、在不在线。官方能连、Surge 不能 → 网络没问题，是 Surge 实现。
+4. **relay 起来了、连 peer 还失败**？查 peer 服务监听的是 v4 还是 v6——MagicDNS 同时给 `100.x` 和 `fd7a:`，服务只听 v4 而 Surge 连了 v6 就连不上，置 `prefer-ipv6 = false`。
+
+一句话：**先用日志 + 直连把「网络挡了」和「实现挂了」分开**，再决定是上 `underlying-proxy`（真被墙）还是 `skip-proxy` 旁路（实现挂了）。
+
+## 完整实现长什么样
+
+这里有个反直觉的事实：**所谓「完整实现」，基本就是 Tailscale 自己那套 Go 代码**——`disco` + WireGuard + DERP 太重，而 Tailscale 是开源的，于是大家都直接复用、没人从零重写。它有三种封装，全是官方代码，**都带完整的 direct/UDP 数据面**：
+
+- **独立客户端 / `tailscaled`**：官方的桌面、iOS、Android 客户端。
+- **`tsnet`**：官方 Go 库，把一个完整节点嵌进你的进程（gVisor 用户态协议栈）。
+- **`libtailscale`**：`tsnet` 的 C 绑定，给非 Go 程序用。
+
+代理工具里值得一提的是 **sing-box**：它的 `tailscale` endpoint **内嵌了 `tsnet`**，跑的是「进程内一个完整的 Tailscale 节点」，所以它有真正的数据面、能 direct/UDP，**没有** Surge 那种 relay-only 限制。一句话：sing-box 复用官方栈，Surge 自己重写。
+
+> 「完整数据面」≠「集成无 bug」：sing-box 的 Tailscale endpoint 还比较新，1.13+ 在 UDP、exit-node 上有些 open issue。另外 Headscale 是**控制面**的开源替代、不是客户端，连它的还是官方那套代码。
+
+## 那 Surge 为什么不直接用、要重写
+
+既然官方栈现成、还是 BSD 许可（**许可证不是障碍**），Surge 为什么不像 sing-box 那样 `import` 过来？因为那套东西的语言和形态都和 Surge 不对付：
+
+- **语言 / 运行时不对。** `tsnet` / `libtailscale` 是 **Go**（自带 gVisor 用户态协议栈）。sing-box 本身就是 Go，嵌进去是一行 import；**Surge 是原生 app**（Swift / Obj-C / C++），刻意做得很轻。要用 `tsnet`，就得把整个 **Go 运行时**（GC、goroutine 调度器、巨大的二进制）跨 cgo 边界塞进一个对延迟敏感的原生网络引擎里。
+- **两个协议栈打架。** Surge 自己**就是**一台流量引擎，自带 TCP/IP、连接管理、DNS、规则引擎。`tsnet` 又**自带**一整套用户态协议栈（gVisor）。嵌它等于在 Surge 里再跑一个并行网络栈、把每条流在两栈之间桥接——架构上重复。Surge 更想把 Tailscale 表达成自己引擎里的**一条策略**，那就得原生实现协议、好插进现成的机器里。
+- **iOS Network Extension 的内存红线。** iOS 上 Surge 的隧道跑在 packet-tunnel 的 Network Extension 里，内存预算极紧（历史上 ~15 MB 量级）。Go 运行时 + gVisor + `tsnet` **很重**——这正是 Go 系代理在 iOS NE 里普遍头疼的点。一个原生、精简、复用 Surge 自身缓冲与栈的实现才塞得进去。
+
+这几条叠起来，重写就成了唯一现实选项。而一旦决定原生重写，两半的代价就天差地别：**DERP 中继 ＝「开一条 TLS 连接转发包」，正是 Surge 的老本行**，便宜、价值高，先上；**`disco` 直连 ＝ 一整套 UDP 打洞数据面**，和 Surge 的模型不搭、是个大件，往后排。所以 relay-only 不是疏忽，而是「原生重写、先做便宜那半」的必然结果——等它把 `disco` 补上，内嵌节点也能 direct，`underlying-proxy` 就成可选项了。
+
+## 什么时候用什么
+
+- **有 IPv6、或不在意 relay 延迟** → Surge 内嵌够用、配置最省心。
+- **纯 IPv4 网络** → 当心上面那个 IPv6 bug；Mac 上直接让官方客户端兜底（`skip-proxy` 放行 `*.ts.net` / `100.64.0.0/10`），别让内嵌节点接管。
+- **控制面 / DERP 真被墙** → Surge 内嵌 + `underlying-proxy` 套个稳定出海的代理。
+- **要 direct 的低延迟 / 当 exit node、subnet router / 完整体验** → 装官方客户端；想要「Tailscale 当一条分流策略」又要完整数据面，就上 sing-box（接受它的配置复杂度和现阶段的集成 bug）。

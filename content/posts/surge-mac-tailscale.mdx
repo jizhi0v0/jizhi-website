@@ -1,7 +1,7 @@
 ---
 title: 用 Surge Mac 接入 Tailscale
 date: 2026-06-06
-updated: 2026-06-23
+updated: 2026-06-27
 category: 工具
 tags: [Surge, Tailscale, 网络]
 excerpt: 一份能直接用的最小配置
@@ -76,7 +76,7 @@ prefer-ipv6 = false
 
    `proxy` 换成你自己的节点（Surge 逗号分隔字段，不吃 `ss://` 链接，任意协议都行）。
 
-   控制面 / DERP 被墙的网络（如中国大陆）是例外：内嵌节点冷启动握手够不到 Tailscale 服务器，`underlying-proxy` 往往是**必需**的，典型表现是流量已经命中 `Policy: ts-home` 却一直连接超时。这时挂一个能稳定出网的策略再 reload。
+   控制面 / DERP **真被墙**时 `underlying-proxy` 才对症：内嵌节点冷启动握手够不到 Tailscale 服务器，给 `ts-home` 挂个能稳定出网的底层代理再 reload。但**别急着归因到墙**——「命中 `Policy: ts-home` 却一直超时 / 时通时断」这个表现，同样可能是内嵌节点在**纯 IPv4 网络下的 IPv6 实现 bug**（那时 `underlying-proxy` 没用，得改用 `skip-proxy` 旁路、交给官方客户端）。先按[〈Tailscale 的 direct 与 DERP〉里的排查清单](/posts/tailscale-direct-vs-derp)分清是「网络挡了」还是「实现挂了」，再决定挂代理还是旁路。
 
 4. **`prefer-ipv6` 看服务。** 目标服务监听 IPv6 才置 `true`，否则保持 `false` 走 v4。置 `true` 时 Surge 会把 MagicDNS 名解析到 `fd7a:...`，而不少自建服务只监听 v4，于是连不上。
 
@@ -110,6 +110,6 @@ prefer-ipv6 = false
 
 ## 局限
 
-- 只支持 TCP 形态的 control 与 DERP 路径，没有 UDP 直连。
+- 只支持 TCP 形态的 control 与 DERP 路径，没有 UDP 直连（原因，以及一个常被误判成 GFW、其实是内嵌节点 IPv6 处理的 bug，见[〈Tailscale 的 direct 与 DERP〉](/posts/tailscale-direct-vs-derp)）。
 - 只能作为客户端主动访问 tailnet。官方策略参数仅 `auth-key` / `hostname` / `control-url` / `mtu` / `dns-server` / `prefer-ipv6`，没有 `advertise-routes` / `exit-node` 之类——当不了 exit node 或 subnet router，别的设备没法经这台 Surge 出网或访问它背后的局域网。
 - 仍是 beta。当临时、按规则分流的内网入口够用；想要完整 Tailscale 体验还是装官方客户端。

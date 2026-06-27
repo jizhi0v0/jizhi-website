@@ -1,0 +1,101 @@
+---
+title: "Tailscale direct vs DERP: why Surge can only relay"
+date: 2026-06-27
+category: Tools
+tags: [Tailscale, Surge, sing-box, Networking, WireGuard]
+excerpt: Same machine — the official client gets direct, Surge's embedded one only relays. Why?
+---
+
+For the hands-on config, see [Joining Tailscale with Surge Mac](/en/posts/surge-mac-tailscale); this post answers one thing: leaving from the *same* machine, why does Surge's embedded Tailscale "work sometimes, fail other times" while the official client is rock-solid? Take the path apart and it's obvious.
+
+## Two paths: direct and DERP
+
+Two Tailscale machines can reach each other two ways:
+
+- **direct**: WireGuard over **UDP**, each side punching a hole through its own NAT for a peer-to-peer path.
+- **relay**: hand the WireGuard packets to a **DERP** relay server; DERP is really just one **HTTPS/TCP** long-lived connection to that relay.
+
+Both deliver the same already-encrypted WireGuard packets to the peer — the only difference is "straight there" vs. "via a relay." When direct works, it's low-latency and third-party-free; only when direct can't be built do you fall back to DERP.
+
+## Why direct is hard: disco
+
+direct isn't "send a UDP packet." To establish it, the client has to run Tailscale's **`disco` (discovery) subsystem**:
+
+1. open a UDP socket and use STUN / DERP to learn its own public `ip:port` as seen outside the NAT;
+2. swap endpoint candidates with the peer over the control / DERP signaling channel;
+3. fire packets **simultaneously** at each other's public `ip:port` to punch both NATs' holes at once;
+4. then keepalive continuously to hold that NAT mapping open.
+
+That's a whole UDP datapath plus state machine. relay, by contrast, is nearly free: open one TLS connection to a DERP server and shove packets through — exactly what any proxy engine does constantly.
+
+## Why Surge's embedded one can only relay
+
+Surge 6.7 made Tailscale a proxy policy, but it's a **beta partial implementation**: it has relay (DERP/TCP) but not the `disco` hole-punching datapath yet. So **it can only relay, regardless of whether UDP works on your network.**
+
+You can confirm this on your own machine. With the official client installed:
+
+```text
+$ tailscale netcheck
+  * UDP: true                      ← your machine's UDP is fine
+  * Nearest DERP: Hong Kong
+
+$ tailscale status
+  100.x.x.x  my-mac-mini  ...  active; direct 203.0.113.x:8330   ← official client got direct
+```
+
+`UDP: true` means whether you can go direct **isn't the network's fault**; the official `tailscaled` is the complete implementation with both paths, so on the same machine it gets `direct` while Surge's embedded node only relays. **The gap is in the implementation, not the network.**
+
+## Don't blame the GFW — verify first
+
+A slow relay, or one that won't connect at all, is **not automatically the wall**. Mine — "won't connect" — turned out, on measurement, to have nothing to do with the GFW.
+
+Bypassing Surge and testing directly (a machine with only IPv4):
+
+- To the control plane `controlplane.tailscale.com` (5/5) and the Hong Kong DERP (22/22), repeated handshakes **all succeed, not one reset**, ~150 ms (high, but it connects).
+- The official client on the same machine is online, `direct` to the peer.
+
+The real trap was in Surge's log: on this **IPv6-less** machine (`netcheck` says `IPv6: no`), the embedded beta node `connectx`'s **every IPv6 endpoint in the entire DERP map** (the v6 addresses of DERP nodes on Equinix / Linode / Hetzner / DigitalOcean…), all `No route to host` — **4707 of them in one session, all IPv6, zero IPv4** — plus dozens of connection loops (`Potential loop connections found, break`). So the relay never establishes, and every peer connection is `Connection aborted / timeout … via Home`.
+
+And it **ignores** the system's IPv6 reachability *and* `ipv6=false`, `ipv6-vif=disabled`, IPv6 DNS off, `prefer-ipv6=false` — tried them all, it keeps spraying. The official `tailscaled` skips v6 endpoints per `netcheck`; the embedded node doesn't. **Nothing to do with the wall — it's an implementation bug** (reported to nssurge).
+
+The fix is mundane: on an IPv4-only network, don't rely on the embedded node — `skip-proxy` `*.ts.net` / `100.64.0.0/10` past Surge and let the official client handle it — the peer connects in 52 ms.
+
+## `ts-home` won't connect? A checklist
+
+"Traffic matches `Policy: ts-home` but keeps timing out / aborting" has several causes — don't assume the wall. Work through them in order:
+
+1. **Read Surge's log first** (`~/Library/Logs/Surge/Surge-*.log`). Flooding `connectx … No route to host`, **all IPv6**, with `Potential loop connections found`? → that's the **embedded-node IPv6 bug** (IPv4-only network). `underlying-proxy` won't fix it — `skip-proxy` `*.ts.net` / `100.64.0.0/10` and let the official client handle it.
+2. **Verify directly, bypassing Surge.** `tailscale debug derp-map` for the nearest DERP's IP, then `curl --noproxy '*' -k --resolve <host>:443:<ip> https://<host>/` a few times, plus one to `controlplane.tailscale.com`. All succeed, no resets → **not the wall**, the fault is in Surge; reset / all timeout → maybe genuinely blocked, and `underlying-proxy` is the fix.
+3. **Can the official client connect on the same machine?** `tailscale netcheck` for `IPv6` / UDP, `tailscale status` for `direct`/`relay` and online state. Official works, Surge doesn't → the network's fine, it's Surge's implementation.
+4. **Relay is up but the peer connection still fails?** Check whether the peer service listens on v4 or v6 — MagicDNS hands out both `100.x` and `fd7a:`; if the service only listens on v4 and Surge dialed v6, it won't connect → set `prefer-ipv6 = false`.
+
+In short: **use the log + a direct test to separate "the network blocked it" from "the implementation broke,"** then choose `underlying-proxy` (genuinely blocked) vs. a `skip-proxy` bypass (implementation broke).
+
+## What a complete implementation looks like
+
+Here's the counterintuitive part: **"complete implementation" is basically Tailscale's own Go code** — `disco` + WireGuard + DERP is too heavy, and Tailscale is open source, so everyone reuses it and nobody rewrites it from scratch. It ships in three packagings, all official code, **each with the full direct/UDP datapath**:
+
+- **Standalone client / `tailscaled`** — the official desktop, iOS, Android client.
+- **`tsnet`** — official Go library: embed a complete node in your process (gVisor userspace stack).
+- **`libtailscale`** — C bindings over `tsnet`, for non-Go programs.
+
+The one proxy tool worth knowing is **sing-box**: its `tailscale` endpoint **embeds `tsnet`** — "a complete Tailscale node inside the process" — so it has the real datapath, can do direct/UDP, and has **none** of Surge's relay-only limitation. In one line: sing-box reuses the official stack, Surge rewrote its own.
+
+> "Complete datapath" ≠ "bug-free integration": sing-box's Tailscale endpoint is fairly new and has open issues around UDP and exit-node in 1.13+. Also, Headscale is an open-source replacement for the *control server*, not a client — devices on it still run the official code.
+
+## So why does Surge rewrite instead of just using it?
+
+Given the official stack is right there and BSD-licensed (**licensing is not the blocker**), why doesn't Surge `import` it like sing-box does? Because its language and shape don't fit Surge:
+
+- **Wrong language / runtime.** `tsnet` / `libtailscale` are **Go** (with a gVisor userspace stack baked in). sing-box is itself Go, so embedding is one `import`; **Surge is a native app** (Swift / Obj-C / C++), deliberately lean. Using `tsnet` would mean dragging the entire **Go runtime** (GC, goroutine scheduler, a big binary) across a cgo boundary into a latency-sensitive native networking engine.
+- **Two netstacks clash.** Surge *is* a flow engine — its own TCP/IP, connection management, DNS, rule engine. `tsnet` brings its **own** full userspace stack (gVisor). Embedding it means running a second, parallel netstack inside Surge and bridging every flow across it — architecturally redundant. Surge would rather express Tailscale as a **policy inside its own engine**, which means implementing the protocol natively so it plugs into the machinery that's already there.
+- **The iOS Network Extension memory ceiling.** On iOS, Surge's tunnel runs in a packet-tunnel Network Extension with a brutal memory budget (historically ~15 MB). Go runtime + gVisor + `tsnet` is **heavy** — exactly why Go-based proxies struggle in the iOS NE. A native, minimal implementation that reuses Surge's own buffers and stack is what fits.
+
+Stack those and a rewrite becomes the only realistic option. And once you're rewriting natively, the two halves cost wildly differently: **DERP relay = "open a TLS connection and forward packets," which is Surge's day job** — cheap, high-value, shipped first; **`disco` direct = a whole UDP hole-punching datapath**, foreign to Surge's model and a big standalone piece — deferred. So relay-only isn't an oversight; it falls straight out of "native rewrite, do the cheap half first" — and once `disco` lands, the embedded node gets direct too and `underlying-proxy` becomes optional.
+
+## When to use what
+
+- **Have IPv6, or don't care about relay latency** → Surge's embedded node is plenty, least fuss.
+- **IPv4-only network** → watch out for the IPv6 bug above; on the Mac just let the official client handle it (`skip-proxy` `*.ts.net` / `100.64.0.0/10`), don't let the embedded node take over.
+- **Control plane / DERP genuinely blocked** → Surge embedded + `underlying-proxy` pointed at a proxy with reliable egress.
+- **Want direct's low latency / to be an exit node or subnet router / the full experience** → install the official client; want "Tailscale as a routing policy" *and* the complete datapath → use sing-box (accepting its config complexity and current integration bugs).
