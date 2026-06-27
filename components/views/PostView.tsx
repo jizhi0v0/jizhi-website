@@ -8,6 +8,7 @@ import { ReadingProgress } from "@/components/ReadingProgress";
 import { Toc } from "@/components/Toc";
 import { Lightbox } from "@/components/Lightbox";
 import { Link } from "@/i18n/navigation";
+import { BackLink } from "@/components/BackLink";
 import { formatFull, type Locale } from "@/lib/i18n";
 
 export async function PostView({
@@ -36,9 +37,9 @@ export async function PostView({
         {toc.length > 0 && <Toc items={toc} title={t("tocTitle")} />}
         <article className="post-article container">
           <div className="post-meta-bar">
-            <Link className="back-link" href="/">
+            <BackLink className="back-link" href="/">
               {t("back")}
-            </Link>
+            </BackLink>
             <div className="post-meta-top">
               <span>{formatFull(post.date, locale)}</span>
               {post.updated && post.updated !== post.date && (
