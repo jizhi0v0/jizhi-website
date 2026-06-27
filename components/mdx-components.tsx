@@ -1,7 +1,10 @@
 import type { ComponentPropsWithoutRef } from "react";
 import { CodeBlock } from "./CodeBlock";
+import { Tweet } from "./Tweet";
 
 export const mdxComponents = {
+  // 正文里嵌入的 X/Twitter 预览卡
+  Tweet,
   // > ... 渲染为 callout（衬线斜体竖线引用）
   blockquote: ({ children }: ComponentPropsWithoutRef<"blockquote">) => (
     <div className="callout">{children}</div>

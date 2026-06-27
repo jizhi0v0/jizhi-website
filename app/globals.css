@@ -440,6 +440,100 @@ hr {
   margin: 1.4em 0;
 }
 
+/* 推文卡片：正文里嵌一条 X/Twitter 预览，整卡是指向原推的链接，纯静态无第三方脚本 */
+.post-body .tweet-card {
+  display: block;
+  max-width: 540px;
+  margin: 1.4em 0;
+  padding: 16px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--paper-2);
+  font-family: var(--font-sans);
+  color: var(--ink);
+  text-decoration: none;
+  transition: border-color 0.15s ease;
+}
+.post-body .tweet-card:hover {
+  border-color: var(--ink-faint);
+}
+.tweet-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tweet-avatar {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.tweet-avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ink-faint);
+  color: var(--paper);
+  font-size: 20px;
+  font-weight: 600;
+}
+.tweet-id {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+.tweet-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.tweet-verified {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: #1d9bf0;
+}
+.tweet-handle {
+  font-size: 14px;
+  color: var(--ink-3);
+}
+.tweet-logo {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  color: var(--ink-2);
+}
+.tweet-text {
+  margin-top: 12px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.tweet-media {
+  display: block;
+  margin-top: 12px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.tweet-media img,
+.tweet-media video {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.tweet-foot {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
 /* 多图横排：相邻多张图自动并排，等宽分配，按各自比例自然缩放 */
 .post-body .img-row {
   display: flex;
