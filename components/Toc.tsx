@@ -112,6 +112,7 @@ export function Toc({ items, title }: { items: TocItem[]; title: string }) {
             key={it.id}
             href={`#${it.id}`}
             className={"toc-item " + (activeId === it.id ? "active" : "")}
+            title={it.text}
           >
             {it.text}
           </a>

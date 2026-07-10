@@ -858,12 +858,19 @@ hr {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 32px;
-  width: 140px;
+  /* 右对齐：目录右边缘钉在正文左侧固定 24px 处，与正文间距恒定、不随视口漂移；宽度
+     按视口在正文左侧那片空白里伸展。正文 border-box 宽 744px（680 + 32×2 padding）在
+     视口居中 → 左边缘在 50vw−372px；目录右缘落在其左 24px。用容器坐标表达（.has-toc
+     居中、max-width:1100，视口≥1100 时 (1100−744)/2 = 178，右缘距容器左 178−24 = 154）。
+     宽度 = 右缘(50vw−396) 到「距视口左 16px」之间：50vw−396−16 = 50vw−412；窄屏夹到
+     140px（≈旧固定宽，1080 断点处放得下），宽屏封顶 220px 容纳长标题。超出容器左界也
+     无妨——绝对定位不裁剪，用的正是正文左侧的空白。 */
+  right: calc(100% - 154px);
+  width: clamp(140px, calc(50vw - 412px), 220px);
   font-family: var(--font-sans);
   font-size: 12.5px;
   color: var(--ink-3);
-  line-height: 1.7;
+  line-height: 1.6;
   display: none;
   /* 必须高于 .post-meta-bar(z-index:10)：后者用 box-shadow 0 0 0 100vw 把纸色背景向
      左右各延伸一屏来遮身后滚动的正文，这层背景会盖到左 gutter 里的 TOC 上、把目录文字
@@ -900,7 +907,12 @@ hr {
   margin-bottom: 12px;
 }
 .toc-item {
-  display: block;
+  /* 最多两行，超出省略号截断（完整标题见 title 悬浮提示）：宽度伸展后多数标题一行放下，
+     个别长标题也不再折成三四行拖垮版面。-webkit-line-clamp 现代浏览器全支持。 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   padding: 4px 0;
   color: var(--ink-3);
   cursor: pointer;
