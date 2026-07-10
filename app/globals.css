@@ -4,6 +4,32 @@
    - 无动画
 */
 
+/* 自托管的内容子集版 Noto Serif SC（产物由 scripts/build-fonts.mjs 生成，`bun run fonts`）。
+   取代 next/font 的整套 CJK 切片：把首屏 render-blocking 的 ~279KB / 300+ 条 @font-face
+   样式表塌成下面 3 条，FCP 不再为字体样式表买单。字体 swap + 不 preload，懒加载不阻塞
+   首绘；子集未覆盖的生僻字优雅降级到 --font-serif 栈里的系统衬线（Songti SC 等）。 */
+@font-face {
+  font-family: "Noto Serif SC";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/noto-serif-sc-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Noto Serif SC";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/noto-serif-sc-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Noto Serif SC";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/noto-serif-sc-700.woff2") format("woff2");
+}
+
 :root {
   /* ===== Light (warm paper) ===== */
   --paper: oklch(0.985 0.006 85);
@@ -34,7 +60,7 @@
 }
 
 :root {
-  --font-serif: var(--font-noto-serif-sc), "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC", "Songti SC", "STSong", Georgia, "Times New Roman", serif;
+  --font-serif: "Noto Serif SC", "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC", "Songti SC", "STSong", Georgia, "Times New Roman", serif;
   --font-sans: var(--font-inter), "Inter", -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
   --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", "SF Mono", Menlo, monospace;
   --mobile-header-height: 116px;

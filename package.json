@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/build-fonts.mjs && next build",
     "start": "next start",
+    "fonts": "node scripts/build-fonts.mjs",
     "test": "playwright test"
   },
   "dependencies": {
@@ -29,6 +30,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "rehype-img-size": "^1.0.1",
+    "subset-font": "^2.5.0",
     "typescript": "^5.6.0"
   }
 }

@@ -18,6 +18,18 @@ const nextConfig = {
           },
         ],
       },
+      {
+        // 自托管的正文衬线子集（public/fonts/*.woff2，见 scripts/build-fonts.mjs）。
+        // 文件名不带 hash（重跑 fonts 会原地覆盖），故不发 immutable：长缓存 + SWR，
+        // 后台静默续期；改字后返场访客最迟隔天拿到新字，期间旧字照常可用。
+        source: "/fonts/:path*.woff2",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, stale-while-revalidate=2592000",
+          },
+        ],
+      },
     ];
   },
 };

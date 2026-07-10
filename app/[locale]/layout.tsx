@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
-import { Inter, JetBrains_Mono, Noto_Serif_SC } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { setRequestLocale, getTranslations } from "next-intl/server";
 import { Analytics } from "@vercel/analytics/next";
@@ -24,18 +24,10 @@ const mono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
 });
 
-// CJK 字体被切成 300+ 个 unicode-range 切片，必须 preload:false（否则全量预载）。
-// display:swap（曾用 optional）：optional 有 ~100ms 不可见期，刷新时衬线正文与
-// 品牌字会闪一帧空白（FOIT，iOS Safari 上尤其明显）。改 swap 后文字立刻用兜底
-// 衬线显示、字体到位再换，消除 FOIT。代价是切片到位时可能回流（CLS）——靠 next/font
-// 的 adjustFontFallback（size-adjust 度量匹配）+ 字体栈里的系统衬线兜底压低；切片
-// immutable 缓存，第二次浏览起基本即时命中。CJK 度量无法 100% 匹配，CLS 以真机为准。
-const serif = Noto_Serif_SC({
-  weight: ["400", "600", "700"],
-  display: "swap",
-  preload: false,
-  variable: "--font-noto-serif-sc",
-});
+// 正文衬线（Noto Serif SC）不走 next/font：它会把整套 CJK 拆成 300+ 条 unicode-range
+// @font-face、生成一坨 ~279KB 的 render-blocking 样式表拖垮 FCP。改为自托管的内容子集版
+// （见 scripts/build-fonts.mjs 与 globals.css 的 @font-face），@font-face 塌成 3 条、swap
+// 懒加载不阻塞首绘。Inter / JetBrains Mono 只含 latin、体积小，仍留在 next/font。
 
 // <html lang>：zh 用 zh-CN（屏幕阅读器走中文语音引擎），en 用 en。
 function htmlLang(locale: string): string {
@@ -105,7 +97,7 @@ export default async function LocaleLayout({
   return (
     <html
       lang={htmlLang(locale)}
-      className={`${sans.variable} ${mono.variable} ${serif.variable}`}
+      className={`${sans.variable} ${mono.variable}`}
       // 下方引导 <script> 命中 Telegram 时给 documentElement 打 tg-webview 标，与
       // 服务端渲染的 class 不一致，抑制这一处的 hydration 警告（仅 Telegram 内命中）。
       suppressHydrationWarning
