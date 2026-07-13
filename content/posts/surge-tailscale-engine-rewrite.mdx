@@ -1,0 +1,104 @@
+---
+title: Surge 重写 Tailscale 引擎：内嵌节点终于能 direct
+date: 2026-07-13
+category: 工具
+tags: [Tailscale, Surge, 网络, WireGuard]
+excerpt: 上一篇押的注中了——direct、NAT 穿透、正确的 DERP 区域都上线了
+---
+
+[上一篇](/posts/tailscale-direct-vs-derp)结尾押了一注：Surge 内嵌 Tailscale 只能 relay，是「原生重写、先做便宜那半」的必然结果，等它把 `disco` 打洞补上，内嵌节点也能 direct。三周后这注中了——Surge 把整个 Tailscale 引擎推倒重写，direct、NAT 穿透、exit node、subnet route 一次到齐，还附了一整套运行时诊断 UI。这篇记三件事：重写带来了什么、beta 阶段踩到的两个问题、以及一个到现在还在的边界。
+
+先说结论：**同一台机器、同一时刻，内嵌节点从「relay via nyc、~420ms」变成了「direct、十几毫秒」**，和官方客户端打平了。
+
+## 一个纠正：不是「自己重写」，是 tailscale-rs
+
+上一篇我推断内嵌只能 relay，是因为它「自己原生重写、先做了便宜的 relay 那半、`disco` 数据面还没做」。这个推断**方向对、前提错**了一半。据 Surge 这次的 release note，之前那个 relay-only 版**并不是**从零手写的，而是**基于官方实验性的 `tailscale-rs` 库**——因为「功能集和性能都不满足 Surge 的需求」，这次才**换成塞进 Surge 网络引擎的自有原生实现**。
+
+所以准确的说法是：relay-only 是**旧集成（`tailscale-rs`）**的阶段状态，而**这次的原生重写**恰恰是补上 direct 的那一版。结论没变（内嵌从只能 relay 到能 direct），但功劳记在「原生重写」上，不是「等旧实现自己长齐」。
+
+## 重写带来了什么
+
+按 release note，新引擎一次性补齐了缺的那半，外加一堆：
+
+- **direct 点对点连接**：NAT 穿透 + 路径发现都做了。**优先 direct，建不起来才退回 DERP**；也给了 `derp-only` 选项强制全程走中继。
+- **exit node**：一条 Tailscale 策略可以指定 exit node，当成普通出站策略用（只影响被分流进这条策略的流量，不改设备默认路由）。
+- **subnet route**：支持经授权的 subnet router 广播的路由；MagicDNS 支持也更完整。
+- **Tailscale 感知的延迟测试**：没配 exit node 时，Surge 对一个在线 peer 跑原生 Tailscale 连通性探测，没有合适 peer 才退回测 home DERP——不再拿一个 HTTP URL 硬测。
+- **单线程吞吐**据官方实验室数据到 ~1.5 Gbps，同条件下和官方客户端相当。
+- **一整套运行时诊断**进了 UI（下面细说）。
+
+> 一个务必注意的坑：**引擎换了核，Tailscale 需要重新注册**。当初 auth-key 没开 reuse 的话，得重新生成一个来完成新设备注册。
+
+## beta 里踩到的两个问题
+
+先说清楚：这一路都是 **beta**，不是正式版——写出来是分享排查过程，beta 本就是用来暴露这些的，谈不上给谁记账。重写版（Mac 6.7.0 build 11670 / iOS 5.102.0 build 3765）刚上线时，direct 在我这边（大陆网络）几乎建不起来。**为了把「网络 / NAT 的锅」和「实现的锅」分开，我在同一台机器、同一时刻拿官方客户端（v1.98.8）做对照**——同机同网、官方能 direct，问题就只可能在 Surge 引擎。两处：
+
+**① home DERP 恒选 nyc。** 同机 netcheck：最近是香港（`hkg`，~169ms），`nyc` ~260ms、几乎是全表最差的之一。可两个 Surge 节点都把 home 选成了 `nyc`——而同机的官方客户端、同 tailnet 里的路由器节点，全都正确选了 `hkg`。
+
+**② 公网端点发现失败（direct 建不起来的真正原因）。** 官方 netcheck 第一跳就探到了自己的公网 IPv4 端点；Surge 这边 `reportedEndpoints` **永远只有 LAN 地址**，探不到公网反射端点。于是对端没有可穿透的端点可用，每个 peer 都落成 `relay`。NAT 明明是友好的（`MappingVariesByDestIP=false`）、官方瞬间就能穿——是 Surge 的 STUN / 端点发现在 beta 里还没打磨到位。
+
+代价很直观：本该是官方量到的 **~12ms direct**，在 Surge 里变成 **~420ms 的 nyc relay**（~35 倍）；Surge 自己的 `test-policy` 量出来 350–1400ms、抖动巨大。而 beta 的好处正在这儿——**修得很快**。changelog 原文：
+
+> Fix the issue where Tailscale's Home region is always selected as nyc / Optimize Tailscale's node probing and transition logic
+
+## 现在的样子：direct + 对的 home region
+
+更到修好那版、两台机（MBP + Mac mini，分别在不同公网、不同 LAN）都重测。用 Surge 自己的 `test-policy` 量、并拿同机官方客户端交叉验证（IP / 主机名已脱敏）：
+
+- **`test-policy ts-home`**：修复前 relay、548–1423ms → 修复后 **direct、1–16ms**。
+- **MBP ↔ mini（`tailscale ping`）**：修复前经 nyc 中继 ~500–1400ms、常常直接不可达 → 修复后 **direct、经对端公网端点 ~12ms**。
+- **本机节点（`tailscale ping`）**：修复前 relay → 修复后 **direct、经 LAN 端点 ~1ms**。
+- **两节点 home DERP**：`nyc` → **`hkg`**。
+
+同机 netcheck 作参照：`hkg` ~169ms、`nyc` ~260ms——`nyc` 之前确实是明显的误选。现在 tailnet 里每一个在线的 Surge 节点都选 `hkg` 当 home，所有活跃链路都是 direct（`path=direct`、走真实端点、个位数到十几毫秒），和同机官方客户端一致。
+
+一句话：上一篇说的 relay-only 限制，没了。
+
+## 增强的诊断 UI
+
+新引擎最实用的一点，是把 Tailscale 的运行时状态摊进了 UI（目前我只在 **macOS 版**上看到这套面板）。右键一条 Tailscale 策略 → Tailscale 面板，直接能看到：
+
+![Surge 的 Tailscale 运行时诊断面板：控制连接、地址、DERP 区域与 Home Region、每个 peer 的 direct/relay 路径、端点](/posts/surge-tailscale-engine-rewrite/diagnostics-panel.png)
+
+- **Connection**：控制连接状态（`map-streaming` = 已连上控制面）、分配到的 v4/v6 地址、MagicDNS 名。
+- **Transport → DERP**：各 DERP 区域的连接情况，以及哪个是 **Home Region**——上面那个「恒 nyc」的问题，就是靠这里一眼看出来的（现在是 `hkg: Connected · Home`）。
+- **Transport → Tailscale Peers**：每个 peer 是 direct 还是 relay、延迟、端点。
+- **Routing → Exit Node**、**Name Resolution → MagicDNS**、活跃连接数、上下行流量。
+
+这些以前只能靠翻日志 + 命令行拼，现在肉眼可查——排查上面两个问题的效率完全不一样。
+
+## 一个边界：内嵌节点目前是 client-only
+
+严格说这算不上「坑」——Surge 的内嵌 Tailscale 节点是 **client-only：只有出站，没有入站监听**。对绝大多数代理场景，这已经够了：你要的是从本机访问 tailnet 里的机器，出站方向完全满足。release note 也把「inbound access over WireGuard and Tailscale」明确列为**未来**的功能，就等 Surge 团队再进化一步。
+
+它只影响一个少数场景：**通过某台 Surge 的 `surge-*` 内嵌节点去远程管理它**。我实测过——从一台机器打另一台的 http-api（`surge-cli --remote`）：
+
+- 打对端**官方 Tailscale 节点**的 IP（`100.116.x.x:6171`）→ **通**。
+- 打对端 **`surge-*` 内嵌节点**的 IP（`100.112.x.x:6171`）→ **超时**。
+
+内嵌节点不接受入站连接，`surge-cli --remote` 落到它上面就会超时。绕法也简单：**远程管理时用那台 Mac 自己的官方 Tailscale 节点 IP**（前提是那台机也跑着官方客户端）即可。
+
+> 顺带说清楚：7-13 那版 changelog 里「Tailscale 控制面 API 不再走 `underlying-proxy`、改由规则系统接管」是**另一回事**——说的是 Surge **连 Tailscale 官方控制服务器**的走法，不是 `surge-cli --remote`。别混。
+
+## 什么时候用什么（更新版）
+
+direct 修好后，上一篇的结论要改几条：
+
+- **一般场景** → 内嵌够用，而且现在**能 direct、延迟低**了，不再是「只能忍 relay」，配置也最省心。
+- **纯 IPv4 网络** → 上一篇那个「内嵌节点狂发 IPv6 端点、relay 起不来」的问题也**已修复**，之前用 `skip-proxy` 把 `*.ts.net` / `100.64.0.0/10` 交给官方客户端兜底的 workaround，现在可以撤了。
+- **控制面 / DERP 真被墙** → 仍可用 `underlying-proxy` 套个稳定出海代理；控制面走法现在也能用规则单独指。
+- **要当 exit node / subnet router** → 内嵌都支持了；只有想把某台机当**远程被接管的一端**（入站）才仍需官方客户端——而这是少数需求。
+
+## 版本
+
+内嵌引擎自报 `1.86.2-surge`——基于 Tailscale 1.86.2 的定制，并非跟随上游最新的 1.98.x（这次对照用的官方客户端正好是 1.98.8）。跨版本互通是 Tailscale 的设计常态，`1.86.2-surge` 和 tailnet 里的 1.98.x 节点、官方 DERP 共存无碍。两台机在 Tailscale 后台都是 `1.86.2-surge`、Connected：
+
+![Tailscale 后台：两个 Surge 节点，引擎均为 1.86.2-surge、状态 Connected](/posts/surge-tailscale-engine-rewrite/admin-console.png)
+
+> 本文写作时（2026-07-13），最新 beta 为 **Surge Mac 6.7.0 (11690)**。
+
+## 给 Surge 团队记一功
+
+最后表扬一句。这波从报障到修复，**响应快、迭代密**：7-11 傍晚我把「无 direct + DERP 选错」连同同机对照发过去，**当晚**就出了修掉这两点的 build；再往前纯 IPv4 的 IPv6 问题也是几天内压掉。沟通顺畅，详细的日志分析都被认真对待、照着改。别忘了这都还在 beta——能在正式版之前把这些磨掉，正是 beta 的意义。
+
+而且**引擎层面的收益是跨平台的**：这次重写和后续修复，iOS 和 macOS 一起走——上面引的 3765 / 3766 / 3767 changelog 本就是 iOS Surge 5 的 TestFlight release note，和 Mac 6.7.0 同源同期。也就是说，direct、正确的 home region 这些底层改进，iOS 端同步获得。（不过前面那套运行时诊断 UI 目前看是 macOS 独有——iOS 端我暂时没见到专门针对 Tailscale 的可视化面板。）

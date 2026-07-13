@@ -1,0 +1,104 @@
+---
+title: "Surge rewrote its Tailscale engine: the embedded node finally goes direct"
+date: 2026-07-13
+category: Tools
+tags: [Tailscale, Surge, Networking, WireGuard]
+excerpt: The bet from last time paid off — direct, NAT traversal, and the correct DERP region all landed.
+---
+
+The [previous post](/en/posts/tailscale-direct-vs-derp) ended on a bet: Surge's embedded Tailscale could only relay because of a "native rewrite, cheap half first" tradeoff, and once it added `disco` hole-punching, the embedded node would go direct too. Three weeks later that bet paid off — Surge tore down and rewrote the entire Tailscale engine: direct, NAT traversal, exit node, subnet routes, all at once, plus a full runtime-diagnostics UI. This post covers three things: what the rewrite brought, two issues I hit during beta, and one boundary that's still there.
+
+The headline: **on the same machine at the same moment, the embedded node went from "relay via nyc, ~420 ms" to "direct, low tens of ms"** — on par with the official client.
+
+## A correction: it wasn't "Surge's own rewrite," it was tailscale-rs
+
+Last time I reasoned the embedded node could only relay because Surge had "rewritten it natively, shipped the cheap relay half first, and hadn't done the `disco` datapath yet." That reasoning was **right in direction, wrong in premise** — half of it. Per Surge's release note for this update, the earlier relay-only version **wasn't** hand-written from scratch; it was **based on the official experimental `tailscale-rs` library** — and because "its feature set and performance did not fully meet Surge's requirements," this release **replaces it with a proprietary implementation built into Surge's networking engine.**
+
+So the accurate framing: relay-only was a stage of the **old integration (`tailscale-rs`)**, and **this native rewrite** is precisely the version that adds direct. The conclusion is unchanged (embedded went from relay-only to direct), but the credit goes to "the native rewrite," not "the old implementation finally maturing."
+
+## What the rewrite brought
+
+Per the release note, the new engine fills in the missing half plus a pile more:
+
+- **Direct peer-to-peer connectivity**: NAT traversal + path discovery, both done. **Prefers direct, falls back to DERP** when it can't build one; there's also a `derp-only` option to force everything through the relay.
+- **Exit node**: a Tailscale policy can target an exit node and be used as a regular outbound policy (affecting only the traffic Surge routes into that policy, not the device default route).
+- **Subnet routes**: routes advertised by authorized subnet routers are supported; MagicDNS support is more complete too.
+- **Tailscale-aware latency testing**: with no exit node configured, Surge runs a native Tailscale connectivity probe against an online peer, falling back to testing the home DERP if there's no suitable peer — no more hammering an HTTP URL.
+- **Single-thread throughput** up to ~1.5 Gbps per Surge's lab numbers, comparable to the official client under the same conditions.
+- **A full runtime-diagnostics** suite in the UI (more below).
+
+> One thing to note: **swapping the engine core means Tailscale has to re-register.** If you didn't enable reuse on your auth key, generate a new one to complete device registration.
+
+## Two issues I hit during beta
+
+Up front: this whole path is **beta**, not a stable release — I'm writing it up to share the debugging, and beta is exactly where these get flushed out; it's not about pinning blame on anyone. When the rewrite (Mac 6.7.0 build 11670 / iOS 5.102.0 build 3765) first landed, direct almost never came up on my end (a mainland-China network). **To separate "the network / NAT's fault" from "the implementation's fault," I ran a same-machine, same-moment comparison against the official client (v1.98.8)** — same machine, same network, official goes direct, so the problem could only be Surge's engine. Two of them:
+
+**① Home DERP always picks nyc.** Same-machine netcheck: nearest is Hong Kong (`hkg`, ~169 ms), `nyc` ~260 ms — nearly the worst in the whole list. Yet both Surge nodes picked `nyc` as home — while the official client on the same machine, and the router node on the same tailnet, all correctly picked `hkg`.
+
+**② Public endpoint discovery fails (the real reason direct won't build).** The official netcheck finds its own public IPv4 endpoint on the first probe; Surge's `reportedEndpoints` **only ever held the LAN address**, never discovering a public reflexive endpoint. So peers had no traversable endpoint and every one fell back to `relay`. With a friendly NAT (`MappingVariesByDestIP=false`) and the official client traversing instantly, this was Surge's STUN / endpoint discovery not yet polished in beta.
+
+The cost was blunt: what the official client measured as **~12 ms direct** became a **~420 ms nyc relay** in Surge (~35×); Surge's own `test-policy` measured 350–1400 ms with heavy jitter. And the upside of beta is right here — **it got fixed fast.** From the changelog:
+
+> Fix the issue where Tailscale's Home region is always selected as nyc / Optimize Tailscale's node probing and transition logic
+
+## Where it stands now: direct + the right home region
+
+After updating to the fixed build, I retested both machines (MBP + Mac mini, on different public IPs and different LANs). Measured with Surge's own `test-policy` and cross-checked against the official client on the same host (IPs / hostnames redacted):
+
+- **`test-policy ts-home`**: before, relay, 548–1423 ms → after, **direct, 1–16 ms**.
+- **MBP ↔ mini (`tailscale ping`)**: before, relayed via nyc ~500–1400 ms, often unreachable → after, **direct via the peer's public endpoint, ~12 ms**.
+- **Local node (`tailscale ping`)**: before, relay → after, **direct via the LAN endpoint, ~1 ms**.
+- **Home DERP on both nodes**: `nyc` → **`hkg`**.
+
+Same-machine netcheck for reference: `hkg` ~169 ms, `nyc` ~260 ms — `nyc` really was a clear mis-selection. Now every online Surge node picks `hkg` as home, and all live paths are direct (`path=direct`, via real endpoints, single digits to low tens of ms), matching the official client on the same machines.
+
+In one line: the relay-only limit from last post is gone.
+
+## The upgraded diagnostics UI
+
+The most useful part of the new engine is that it lays Tailscale's runtime state out in the UI (so far I've only seen this panel on the **macOS** version). Right-click a Tailscale policy → the Tailscale panel, and you see, directly:
+
+![Surge's Tailscale runtime-diagnostics panel: control connection, addresses, DERP regions and Home Region, direct/relay path per peer, endpoints](/posts/surge-tailscale-engine-rewrite/diagnostics-panel.png)
+
+- **Connection**: control-connection state (`map-streaming` = connected to the control plane), assigned v4/v6 addresses, MagicDNS name.
+- **Transport → DERP**: each DERP region's connection status and which one is the **Home Region** — that "always nyc" issue above is exactly what this made obvious at a glance (now `hkg: Connected · Home`).
+- **Transport → Tailscale Peers**: whether each peer is direct or relay, latency, endpoints.
+- **Routing → Exit Node**, **Name Resolution → MagicDNS**, active connection counts, up/down traffic.
+
+Before, all of this had to be pieced together from logs + the command line; now it's visible at a glance — which made debugging the two issues above a completely different experience.
+
+## A boundary: the embedded node is currently client-only
+
+One thing that **didn't change, and won't soon**: Surge's embedded Tailscale node is **client-only — outbound only, no inbound listener**. For the vast majority of proxy use cases this is plenty: what you want is to reach machines on your tailnet from this host, and the outbound direction is fully covered. The release note also lists "inbound access over WireGuard and Tailscale" as a **future** feature — one more evolution to wait on from the Surge team.
+
+It only affects one minority scenario: **remotely managing a Surge instance through its `surge-*` embedded node**. I tested it — hitting one machine's http-api from another (`surge-cli --remote`):
+
+- To the peer's **official Tailscale node** IP (`100.116.x.x:6171`) → **connects**.
+- To the peer's **`surge-*` embedded node** IP (`100.112.x.x:6171`) → **times out**.
+
+The embedded node accepts no inbound connections, so `surge-cli --remote` landing on it just times out. The workaround is simple: **for remote management, use that Mac's own official Tailscale node IP** (assuming it's also running the official client).
+
+> To be clear: the 7-13 changelog line — "access to Tailscale's control-plane API no longer follows the `underlying-proxy` parameter; it now uses the standard rule system" — is **a different thing**. That's about how Surge reaches **Tailscale's own control server**, not `surge-cli --remote`. Don't conflate them.
+
+## When to use what (updated)
+
+With direct fixed, a few conclusions from last post change:
+
+- **General use** → the embedded node is enough, and now it **goes direct with low latency** instead of "just live with relay," with the least fuss.
+- **IPv4-only network** → the "embedded node sprays IPv6 endpoints and relay never comes up" issue from last post is **also fixed**; the `skip-proxy` workaround of handing `*.ts.net` / `100.64.0.0/10` to the official client can be retired.
+- **Control plane / DERP genuinely blocked** → you can still point `underlying-proxy` at a proxy with reliable egress; the control-plane path can now be steered separately with rules too.
+- **Want an exit node / subnet router** → the embedded node does both now; only **remote management (inbound)** still needs the official client — and that's a minority need.
+
+## Version
+
+The embedded engine reports `1.86.2-surge` — a customization based on Tailscale 1.86.2, not tracking upstream's latest 1.98.x (the official client I compared against happens to be 1.98.8). Cross-version interop is by design in Tailscale; `1.86.2-surge` coexists fine with 1.98.x nodes on the tailnet and with the official DERP. Both machines show `1.86.2-surge`, Connected, in the Tailscale admin console:
+
+![Tailscale admin console: two Surge nodes, engine 1.86.2-surge on both, status Connected](/posts/surge-tailscale-engine-rewrite/admin-console.png)
+
+> At the time of writing (2026-07-13), the latest beta is **Surge Mac 6.7.0 (11690)**.
+
+## Credit to the Surge team
+
+One note of praise to close. On this round, from report to fix, they were **fast and iterated tightly**: on the evening of 7-11 I sent over "no direct + wrong DERP" with the same-machine comparison, and **that same night** a build shipped fixing both; the earlier IPv4 IPv6 issue was likewise squashed within days. Communication was smooth, and the detailed log analysis was taken seriously and acted on. And remember this is all still beta — being able to grind these down before a stable release is exactly what beta is for.
+
+And **the gains are cross-platform**: this rewrite and the follow-up fixes moved on iOS and macOS together — the 3765 / 3766 / 3767 changelogs I quoted above are literally the iOS Surge 5 TestFlight release notes, from the same source and the same window as Mac 6.7.0. So direct, the correct home region, and the underlying improvements land on iOS too. (That said, the runtime-diagnostics UI above looks macOS-only for now — I haven't seen a dedicated Tailscale panel on iOS yet.)
