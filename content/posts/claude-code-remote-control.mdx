@@ -1,0 +1,83 @@
+---
+title: Claude iOS 支持配对 remote-control 服务器模式
+date: 2026-07-15
+category: 工具
+tags: [Claude, Claude Code, 工作流]
+excerpt: 手机上多了 Devices 面板，能配对本地机器、选目录起会话
+---
+
+昨天更新完 Claude iOS（1.260709.0），打开 Code 页发现多了一个 **Devices 面板**。一开始它是空的——「No recently connected devices」，点进去是一张引导页，让我在电脑上进入某个目录、跑 `claude remote-control` 或 `claude rc`：
+
+![Claude iOS 的 Set up remote control 引导页：Devices 显示 No recently connected devices，提示在电脑上进入目录并运行 claude remote-control 或 claude rc](/posts/claude-code-remote-control/setup-remote-control.png)
+
+照做——在机器上把服务器模式起起来，再回到手机：那台机器就出现在 Devices 里了，标着 Active。点一下能选目录，在它上面起一个新的远程会话，右边还标着容量 1 of 32：
+
+![Claude iOS 的 Devices 面板列出两台已连接机器，Choose directory 弹层显示目录与 1 of 32 的容量](/posts/claude-code-remote-control/devices-choose-directory.png)
+
+这个入口确实是新的。今年 3 月有人在 GitHub 上问过「怎么从 iOS app spawn 新的 remote-control 会话」（[#34626](https://github.com/anthropics/claude-code/issues/34626)）——当时终端里明明写着容量 1/32，手机上点 `+` 号出来的却是**云端会话**，而不是连到本地 server 的新会话；5 月还有人专门提了 feature request，要「从 iOS 在配对的 Mac 上起会话」（[#57904](https://github.com/anthropics/claude-code/issues/57904)）。两个都被 closed as not planned，现在这个能力却就这么出现在 app 里了——App Store 的更新说明里只有一句「Squashed some bugs and improved the overall experience」，没提它。
+
+而 CLI 那边的服务器模式其实一直都在：`claude remote-control` 子命令随 Remote Control 于 2026 年 2 月首发（v2.1.51）时就有了，release note 的原话是「Added `claude remote-control` subcommand for external builds, enabling local environment serving for all users」。换句话说，手机端补上的是**入口**，不是能力。
+
+顺着这个新功能，下面几个点值得说清楚。
+
+## Remote Control 不是「云端驱动」
+
+iOS 上的 Claude Code 有两条路，方向正好相反，混了就全乱：
+
+- **Claude Code on the web（云端会话）**：跑在 Anthropic 云端的 sandbox 虚拟机里，从 GitHub repo 拉代码，拿不到你本地的文件系统和 MCP 服务。**这个才是「云端驱动」。**
+- **Remote Control（远程控制）**：跑在**你自己的机器上**，手机 / 网页只是一扇「窗」。代码执行、文件读写、MCP 调用全程在本地。
+
+它的网络模型也值得一提：本地进程只发**出站** HTTPS，机器**不开任何入站端口**（跑起来查一下进程的 socket，一个 LISTEN 都没有）。你从手机连过来时，Anthropic 的服务器在中间做消息路由——转发的只是你的输入、Claude 的回复、工具活动和权限审批这些**信令**，不是算力。这就是为什么它能让手机连上本地机器，却不用把端口暴露到公网。
+
+一个诚实的补充：连接期间，会话的对话记录会存储在 Anthropic 服务器上，用于多设备同步和断线重连。执行和文件留在本地，但 transcript 本身是过服务器并留存的——因此有 Zero Data Retention 等合规要求的组织不能开 Remote Control。
+
+## 启动方式：看着三个入口，其实只有两种
+
+这是踩坑重灾区，而最容易混的是 `--remote-control` 和 `remote-control` 只差两个横杠：
+
+1. **交互式会话 + 远程控制**：`claude --remote-control`（可跟一个会话名）起一个普通的交互式终端会话，同时打开远程控制——你既能在本地终端打字，也能从手机操作。在一个**已有**会话里敲 `/remote-control` 得到的是**同一个东西**，只是把当前对话历史带进来，区别仅仅在于「启动时开」还是「中途开」。
+2. **服务器模式**：`claude remote-control`（不带 `--` 的子命令，别名 `claude rc`）。终端变成一个无头守护进程，没有本地输入提示，只显示连接状态——它是为**长期后台运行的 daemon** 设计的。开头那张引导页给的正是这两条命令，它要你起的从来就是服务器模式。
+
+服务器模式今天的默认值是奔着多会话去的：`--spawn` 默认 `same-dir`、`--capacity` 默认 32，启动时预先创建一个会话让你马上有地方打字（所以终端里会看到容量从 `0/32` 跳到 `1/32`）。`--spawn=worktree` 会把每个按需会话隔离进各自的 git worktree，运行时按 `w` 就能切（当前目录不是 git 仓库时它会退回 same-dir）；`--spawn=session` 则是「经典单会话模式」，那个会话结束进程就退出。
+
+## 为什么绑定目录，而不是像 SSH 那样自由
+
+用起来你会发现：一个 server 绑定它启动时那个目录，换 repo 得再起一个 server；你没法像 SSH 那样连上机器后自由 `cd` 到任意路径再拉起。
+
+这不是偷懒，是**故意的安全取舍**，根子在两点：
+
+**其一，workspace trust（工作区信任）。** Claude Code 在任何目录启动前都要你接受一次信任确认，因为它能在该目录里读、写、执行文件。这条约束直接继承到了 Remote Control——`claude remote-control --help` 的 NOTES 里就写着「Run `claude` first in the directory to accept the workspace trust dialog」：server 只能锚定在你**事先信任过**的目录。
+
+而「信任确认之前」这个窗口，恰恰是反复出问题的地方，有两个已修复的 CVE 为证（都由 Check Point Research 披露）：
+
+- **CVE-2025-59536**，官方标题就叫「Claude Code can execute commands prior to the startup trust dialog」——恶意项目里的代码能赶在你点下信任确认**之前**就执行（归类是 Code Injection，不是「绕过对话框」：对话框本身好好的，问题出在顺序上）。1.0.111 修复。
+- **CVE-2026-21852**，标题「Claude Code Leaks Data via Malicious Environment Configuration Before Trust Confirmation」——恶意 repo 用配置把 `ANTHROPIC_BASE_URL` 指向攻击者的端点，Claude Code 在弹出信任确认**之前**就带着 `x-api-key` 发了请求，凭据因此外泄。2.0.65 修复。
+
+两个都早已修好，这里不是说现在有洞，而是说：**「信任还没确认」这段时间是个反复栽跟头的失败区**，所以把 server 钉死在已信任目录里是有来由的。
+
+**其二，凭据强度不对等。** SSH 是 OS 级密钥认证，给你的是完整 shell，是你本人在用判断决定跑什么。而 Remote Control 的「钥匙」是一个 session URL——它授予对会话的完全控制权，且没有额外认证层，**任何拿到 URL 的人都有这些权限**。如果让这样一个可能被截图泄露的弱凭据获得「全盘任意执行代码」的能力，攻击面会失控。
+
+所以本质是**便利性 vs 凭据强度的取舍**：Remote Control 想要「扫个 QR 就能接管」的低摩擦，就不能同时拥有 SSH 那种全盘漫游权力。SSH 用高摩擦换全盘自由，Remote Control 用目录绑定换低摩擦。你没法两头都要。
+
+顺带一提：session URL 请当机密对待，别贴群聊、别截图、别进工单——像对待 SSH key 一样。
+
+## 实操要点
+
+- **进程必须活着**：server 是指向本地活进程的窗口，不是后台常驻服务。终端一关或 `Ctrl+C`，会话就断。想「关掉 SSH 也不死」，用 `tmux` / `systemd`（macOS 上是 `launchd`）把它 detach 成常驻，重启还能自动拉起——这才是多机、可断开开发者的正确用法。
+- **认证很挑**：只认 claude.ai 订阅认证——CLI 的原话是「Remote Control is only available with claude.ai subscriptions. Please use `/login` to sign in with your claude.ai account.」；而且**只在通过 `api.anthropic.com` 用 Claude 时可用**（「Remote Control is only available when using Claude via api.anthropic.com.」），第三方 provider / 网关这条路是堵死的。还有两个不太有人提的：`claude setup-token` / `CLAUDE_CODE_OAUTH_TOKEN` 那种长效 token 出于安全只有推理权限，**Remote Control 要的是 full-scope login token**；组织也能用 managed setting `disableRemoteControl` 直接关掉它。另外它在云端会话里不可用（「Remote Control is not available inside a cloud session.」）。
+- **权限模式在起 server 时就定了**：服务器模式**不接受** `--dangerously-skip-permissions`（会直接报 Unknown argument），但它有 `--permission-mode`，可以给 spawn 出来的会话预设 `acceptEdits` / `auto` / `bypassPermissions` / `default` / `dontAsk` / `plan`。也就是说「远程会话一定会弹审批」并不成立——审批与否取决于你起 server 时给的这个模式。
+- **别指望它一直连着**：官方文档的说法是「笔记本休眠或网络中断后，机器回到在线时会话会自动重连」，并给了一条硬限制——**机器醒着但连不上网超过约 10 分钟，会话就超时、进程退出**，得重新起。但「卡在 reconnecting 再也回不来」是个至今 open 的老问题（[#34255](https://github.com/anthropics/claude-code/issues/34255)、[#33041](https://github.com/anthropics/claude-code/issues/33041)），跨 macOS / Linux / WSL2 / Windows 都有人报，症状是连接掉了之后终端一直显示 Remote Control reconnecting，只能人走回终端手动断开重连——这恰好把远程控制的意义抵消掉了。值得一提的是，别急着怪自己网不好：报告者试过 VPN、TCP keepalive、后台 ping 都没治好，还出现过两台在不同物理位置、不同网络的机器在几十秒内先后掉线、以及同一台机上两个独立会话在同一时刻断开——线索都指向服务器侧。
+- **一个 server 绑一个目录**：要同时管多个项目，就一个 repo 起一个常驻 server，手机端它们都会出现在 Devices 列表里。
+
+## 什么时候用它
+
+判断很简单，看你需不需要本地环境：
+
+- **需要本地环境**（私有 repo、本地 MCP、自定义工具链、Xcode / 签名等），却想离开工位继续盯任务、批权限——用 **Remote Control**。
+- **任务自包含、不需要本地环境、想关机走人**——用 **Claude Code on the web**（纯云端 sandbox）。
+
+两者互补，不是替代。
+
+---
+
+*功能仍在快速迭代，一切以官方文档 [code.claude.com/docs/en/remote-control](https://code.claude.com/docs/en/remote-control) 为准。本文的 CLI 行为基于 Claude Code v2.1.195 实测。*
