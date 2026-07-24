@@ -278,6 +278,10 @@ It is equivalent to entering `127.0.0.1`, `5753`, and the corresponding secret m
 Once the new proxy is connected, **delete** the old SOCKS5 entry from Telegram and restart Telegram. Turning the SOCKS5 switch off is not enough: Telegram may probe saved proxies for availability, so retaining the old entry can continue generating malformed requests.
 
 > This also works on iOS. Keep `interface` at `127.0.0.1` because Telegram and Surge run on the same device. Do not use `0.0.0.0`; there is no reason to expose the MTProto listener to the LAN.
+>
+> **After saving the profile on iOS, fully stop and restart Surge.** Saving or selecting the profile—even returning to a Home screen that already shows `STOP`—does not mean the running Network Extension has loaded the new configuration. Tap `STOP`, wait until the button changes to `START`, and start Surge again.
+>
+> Afterward, open **Events** and confirm that a current event says `MTProto proxy listen on interface: 127.0.0.1, port: 5753`. Only then is the local MTProto Server actually listening. If Events shows only HTTP on 6152 and SOCKS5 on 6153, or their timestamps predate the profile change, Telegram will remain on `connecting`; the failure has not yet reached the IPv4/IPv6 outbound stage.
 
 ## What `ipv6=true` actually controls
 
@@ -371,9 +375,18 @@ Steps:
    - a clickable deep link in this form:
      tg://proxy?server=127.0.0.1&port=5753&secret=<generated-secret>.
    Then stop and wait for my approval. Do not reload.
-7. After I confirm and switch/reload the profile, have me add the MTProto
-   proxy through the deep link. Once connected, remind me to delete the old
-   SOCKS5 entry and restart Telegram; merely switching it off is not enough.
+7. After I confirm and switch/reload the profile:
+   - on iOS, saving or selecting the profile is not enough. Have me fully stop
+     Surge, wait for the button to change to START, and start it again;
+   - have me open Surge Events and confirm a current event says
+     “MTProto proxy listen on interface: 127.0.0.1, port: 5753”;
+   - if Events shows only HTTP/SOCKS5 listeners, or their timestamps predate
+     the profile edit, do not continue with Telegram. First resolve why the
+     Network Extension has not loaded the profile;
+   - only after the listener is confirmed should I add the MTProto proxy
+     through the deep link.
+   Once connected, remind me to delete the old SOCKS5 entry and restart
+   Telegram; merely switching it off is not enough.
 8. Verify using Surge's active connections and recent requests:
    - Telegram ingress should be MTProto, not SOCKS5;
    - no new requests to 0.0.0.0/8:443 should appear;

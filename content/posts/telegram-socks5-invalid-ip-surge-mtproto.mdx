@@ -278,6 +278,10 @@ openssl rand -hex 16
 确认新代理已连接后，把旧 SOCKS5 项从 Telegram 里**删除**，再重启 Telegram。只关闭 SOCKS5 的开关还不够稳妥：Telegram 会对保存的代理做可用性探测，旧项留着仍可能继续制造异常请求。
 
 > iOS 也适用，但 `interface` 仍应保持 `127.0.0.1`，因为 Telegram 与 Surge 都在同一台设备上。不要写 `0.0.0.0`，没有必要把 MTProto 监听暴露给局域网。
+>
+> **iOS 保存配置后必须完整停止并重新启动 Surge。** 仅仅保存、选中 profile，甚至回到已经显示 `STOP` 的首页，都不代表正在运行的 Network Extension 已经载入新配置。先点 `STOP`，等按钮变成 `START`，再重新启动。
+>
+> 启动后到 Surge 的 **Events** 中确认出现当前时间的 `MTProto proxy listen on interface: 127.0.0.1, port: 5753`。这才表示本机 MTProto Server 已真正开始监听。如果只看到 HTTP 6152、SOCKS5 6153，或者事件时间仍早于配置修改时间，Telegram 会一直停在 `connecting`；此时问题还没有进入 IPv4/IPv6 出站阶段。
 
 ## `ipv6=true` 到底做了什么
 
@@ -364,8 +368,15 @@ SOCKS5，而是通过 Surge 的本地 MTProto Server 接管 Telegram 连接，�
    - 一条可点击的 tg://proxy 深链，格式为
      tg://proxy?server=127.0.0.1&port=5753&secret=<刚生成的 secret>。
    然后停下，等我确认。不要自行 reload。
-7. 我确认并切换/重载配置后，让我在 Telegram 中通过深链新增 MTProto 代理。
-   确认连接成功后，提醒我删除旧 SOCKS5 项并重启 Telegram；只关闭开关不算删除。
+7. 我确认并切换/重载配置后：
+   - 如果是 iOS，仅保存或选中 profile 不算生效。让我先完整停止 Surge，等按钮
+     变成 START，再重新启动；
+   - 让我打开 Surge 的 Events，确认出现当前启动时间的
+     “MTProto proxy listen on interface: 127.0.0.1, port: 5753”；
+   - 如果只有 HTTP/SOCKS5 监听事件，或时间早于配置修改时间，不要继续配置
+     Telegram，先排查配置尚未被 Network Extension 载入；
+   - 确认监听成功后，再让我通过深链新增 MTProto 代理。
+   连接成功后，提醒我删除旧 SOCKS5 项并重启 Telegram；只关闭开关不算删除。
 8. 用 Surge 的活动连接和近期请求做只读验证：
    - Telegram 入站协议应为 MTProto，不再是 SOCKS5；
    - 不应再出现新的 0.0.0.0/8:443 请求；
