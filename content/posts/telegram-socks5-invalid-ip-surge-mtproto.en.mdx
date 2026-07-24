@@ -1,0 +1,388 @@
+---
+title: Why Telegram Kept Connecting to 0.48.0.158—and How Surge MTProto Bypassed It
+date: 2026-07-24
+category: Tools
+tags: [Telegram, Surge, SOCKS5, MTProto, IPv6, Networking]
+excerpt: Surge recorded 4,831 failed requests to 0.0.0.0/8 in four days. The trail led to Telegram's SOCKS5 IPv6 encoding bug, just as Surge 6.8 shipped an MTProto Server that bypasses it.
+---
+
+It started with a connection in Surge that did not look real:
+
+```text
+Telegram → 0.48.0.158:443
+```
+
+Then came `0.0.0.0:443` and `0.166.119.112:443`. They all fell within `0.0.0.0/8`. These were neither hidden Telegram servers nor leaked Surge Fake IPs. **Telegram's SOCKS5 implementation had incorrectly encoded an IPv6 destination as IPv4 and handed Surge a garbage address.**
+
+The timing was almost too perfect. Just as I traced the root cause to source code, **Surge Mac 6.8.0 (11830)** added an **MTProto Server**; the corresponding iOS test build was **Surge 5 5.102.0 (3786)**. Instead of making Telegram specify an IP through SOCKS5, this mode lets Telegram provide only the DC (Data Center) number. Surge then selects the actual Telegram service endpoint. It does not fix Telegram's code, but it bypasses the broken path completely.
+
+The result first: after switching to MTProto, deleting the old SOCKS5 entry from Telegram, and restarting the app, the `0.x.x.x` connections disappeared. Telegram moved entirely to valid IPv6 DC endpoints. Over the same proxy path, IPv6 added only about 5ms to median latency versus IPv4 and produced no failures, so I left it enabled.
+
+## First, prove that the requests came from Telegram
+
+Surge's connection records contained all the useful evidence:
+
+- The process was `/Applications/Telegram.app/Contents/MacOS/Telegram`.
+- The incoming protocol was SOCKS5.
+- Every target was `0.x.x.x:443`.
+- The requests matched `LAN → DIRECT`, then failed with `No route to host`.
+- Normal connections to Telegram DCs in `149.154.x.x` and `91.108.x.x` continued to succeed at the same time.
+
+The [IANA IPv4 Special-Purpose Address Registry](https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml) names `0.0.0.0/8` “This network.” It is not ordinary globally routable address space. `0.48.0.158:443` therefore cannot be a real, reachable Telegram node, and Surge's direct connection attempt can only fail.
+
+Nor was this a stray packet or two. Looking back through four days of Surge history:
+
+| Date | Failures | Distinct `0/8` addresses |
+| --- | ---: | ---: |
+| July 20 | 594 | 32 |
+| July 21 | 1,537 | 55 |
+| July 22 | 938 | 36 |
+| July 23 | 1,762 | 40 |
+| **Total** | **4,831** | **114 (deduplicated)** |
+
+`0.48.0.158` appeared 1,529 times, and `0.48.58.130` appeared 1,526 times. Telegram's official bug tracker also contains [reports of similar `0.x.x.x:443` connections](https://bugs.telegram.org/c/36949/12), so this was not unique to one machine.
+
+## Two plausible explanations that did not survive
+
+My first suspicion was that Telegram had received bad addresses from its DC configuration or backup configuration. MTProto clients do fetch DC lists dynamically, so the idea was plausible—but it could not explain the stream of many different `0/8` addresses.
+
+Another theory was reversed IPv4 byte order. But valid DC addresses were displayed correctly in Surge, while the invalid values could not be consistently reversed into real Telegram nodes. If this were a uniform endianness bug, normal connections should have been broken too.
+
+The source code ultimately ruled out both ideas.
+
+## The source bug: ATYP is hard-coded to IPv4
+
+Telegram for macOS and iOS share MtProtoKit. In the official repository, [`MTTcpConnection.m`](https://github.com/TelegramMessenger/Telegram-iOS/blob/6ad963e5b62d354da79040f388ae2b9132fb17b8/submodules/MtProtoKit/Sources/MTTcpConnection.m#L1435-L1475) constructs a SOCKS5 CONNECT request like this:
+
+```objc
+req.AddrType = 1;
+struct in_addr ip4;
+inet_aton(_scheme.address.ip.UTF8String, &ip4);
+req.DestAddr.IPv4 = ip4;
+```
+
+Three problems compound here:
+
+1. `AddrType = 1` is hard-coded. Under [RFC 1928](https://datatracker.ietf.org/doc/html/rfc1928#section-4), SOCKS5 `ATYP=0x01` means a four-byte IPv4 address follows. IPv6 requires `ATYP=0x04` followed by 16 bytes.
+2. `inet_aton()` parses IPv4 only. It fails when given an IPv6 string.
+3. The code neither checks the return value from `inet_aton()` nor initializes `ip4` to zero before copying those four bytes into the request.
+
+When Telegram selects an IPv6 DC but connects through this SOCKS5 code, Surge does not receive IPv6. It receives a syntactically valid four-byte “IPv4” value whose contents came from uninitialized memory. Rendered in dotted-decimal notation, those bytes become addresses such as `0.48.0.158`.
+
+So the precise description is not “Surge parsed IPv6 incorrectly.” **Telegram had already violated SOCKS5's address-type contract before sending the request.** Surge simply processed what the client claimed was `ATYP=IPv4`.
+
+This explains why the addresses changed, why every destination used port 443, why valid IPv4 DC connections worked in parallel, and why the problem appeared only when Telegram used SOCKS5. System networking or a VIF does not pass through Telegram's SOCKS5 packet-building code.
+
+## First aid: reject `0.0.0.0/8`
+
+Before finding a better solution, I added this rule:
+
+```ini
+IP-CIDR,0.0.0.0/8,REJECT,no-resolve
+```
+
+It stopped Surge from repeatedly trying to connect to unroutable destinations. The records changed from `No route to host` to immediate `REJECT`. This is a useful defensive rule, but only first aid: Telegram continues generating malformed requests, and the proxy path itself remains broken.
+
+## Surge's workaround: let Telegram name the DC, not the IP
+
+The builds used for this test were:
+
+- **macOS: Surge Mac 6.8.0 (11830)**
+- **iOS: Surge 5 5.102.0 (3786), ready to test**
+
+The [MTProto Server](https://manual.nssurge.com/others/mtproto.html) added in these test builds changes the division of responsibility:
+
+```text
+Old: Telegram --SOCKS5 / concrete destination IP--> Surge --proxy--> Telegram DC
+New: Telegram --MTProto / DC number--> Surge --select endpoint and proxy--> Telegram DC
+```
+
+In SOCKS5 mode, Telegram packs the destination into the request. When it mislabels IPv6 as IPv4, Surge has no information from which to reconstruct the original value. In MTProto mode, Telegram tells Surge only which DC it needs. Surge maps that DC to a production endpoint itself, so Telegram's broken SOCKS5 address encoding never runs.
+
+This is a workaround, not an upstream fix. The Telegram source bug remains; the connection simply no longer reaches it.
+
+## What is actually sent: SOCKS5 vs. MTProto Proxy
+
+“Telegram gives Surge a DC number” describes the outcome, but the wire format is not readable text such as `dc=1`. The two proxy protocols differ from their very first packet.
+
+### SOCKS5: connect me to this exact address
+
+SOCKS5 is a general-purpose proxy protocol with no knowledge of Telegram. After opening TCP to Surge's SOCKS5 port, the client negotiates an authentication method and sends a CONNECT request:
+
+```text
+Client → Surge: VER | NMETHODS | METHODS
+Surge → Client: VER | METHOD
+
+Client → Surge: VER | CMD=CONNECT | RSV | ATYP | DST.ADDR | DST.PORT
+Surge → Client: VER | REP | RSV | ATYP | BND.ADDR | BND.PORT
+
+After negotiation: forward Telegram's binary stream unchanged
+```
+
+The third line is the important one. Under [RFC 1928](https://datatracker.ietf.org/doc/html/rfc1928#section-4), `ATYP=0x01` must be followed by four bytes of IPv4, `0x03` denotes a domain name, and `0x04` denotes 16 bytes of IPv6. **Telegram chooses and encodes the destination.** Surge dials whatever appears in `DST.ADDR:DST.PORT`.
+
+That is the entry point for this bug. Telegram has an IPv6 DC but sends `ATYP=0x01` plus four uninitialized bytes. Surge sees a structurally valid IPv4 CONNECT request. It neither knows the original IPv6 address nor has enough information to recover it.
+
+SOCKS5 does not encrypt the subsequent application stream either. It only establishes a general-purpose byte pipe. Telegram traffic is not plaintext here because inner MTProto already provides its own client-to-server encryption—not because SOCKS5 added encryption.
+
+### MTProto Proxy: I need this DC
+
+Telegram's MTProto Proxy is purpose-built. After opening TCP to Surge's MTProto port, the client constructs a **64-byte random initialization header**. According to Telegram's official [MTProto transport obfuscation specification](https://core.telegram.org/mtproto/mtproto-transports#transport-obfuscation), its logical contents are:
+
+```text
+Offset  0..55: random data (part is used to derive bidirectional keys and IVs)
+Offset 56..59: MTProto transport identifier
+Offset 60..61: DC ID (signed 16-bit little-endian integer)
+Offset 62..63: random data
+```
+
+That layout is not sent in the clear. Before transmission, Telegram:
+
+1. Extracts bidirectional key seeds and IVs from the random header.
+2. Concatenates each key seed with the configured 16-byte proxy secret and applies SHA-256 to derive an AES-256 key.
+3. Encrypts the initialization header with AES-256-CTR.
+4. Replaces only the final eight bytes of the outgoing 64-byte header with their encrypted counterparts.
+5. Reuses the same AES-CTR state to obfuscate the rest of the connection.
+
+The first 64 captured bytes therefore still look random; neither the transport identifier nor the DC ID travels in cleartext. Because Surge holds the same secret, it can validate and unwrap this layer, learn which DC is requested, and select a concrete IPv4 or IPv6 endpoint from Telegram's DC configuration. The official [MTProxy implementation](https://github.com/TelegramMessenger/MTProxy) also obtains Telegram's backend proxy secret and DC configuration. Separately, the proxy administrator generates the 16-byte client-access secret carried in a `tg://proxy` link. These are different secrets.
+
+The subsequent payload can be understood as two layers:
+
+```text
+Outer: AES-CTR obfuscation derived from the proxy secret
+  └─ MTProto transport frames (abridged / intermediate / padded intermediate, etc.)
+       └─ Encrypted Telegram MTProto messages
+```
+
+The proxy secret is **not a Telegram account authorization key or chat-encryption key**. It identifies proxy clients and obfuscates the client-to-proxy leg. After removing the outer layer, Surge can observe the DC ID, connection timing, and traffic volume and relay MTProto frames. The inner messages remain encrypted with the MTProto auth key shared by the Telegram client and Telegram DC. The proxy does not possess that key and cannot read chat plaintext as a consequence of handling this connection.
+
+### Where does the DC ID-to-endpoint list come from?
+
+It is a **public, dynamic configuration**—not a guess by Surge and not a permanent one-DC-to-one-IP mapping.
+
+Telegram's MTProto API exposes [`help.getConfig`](https://core.telegram.org/method/help.getConfig), which the official documentation explicitly allows over an unauthenticated connection. The returned [`config`](https://core.telegram.org/constructor/config) contains `dc_options: Vector<DcOption>`, the current production DC endpoint list. Each [`dcOption`](https://core.telegram.org/constructor/dcOption) includes:
+
+- the DC `id`;
+- `ip_address` and `port`;
+- flags such as `ipv6`, `media_only`, `tcpo_only`, `cdn`, and `static`;
+- a per-endpoint transport secret for some options.
+
+One DC can therefore expose multiple IPv4, IPv6, general-purpose, and media endpoints. The configuration also carries `expires`, which tells clients when it should be fetched again.
+
+Surge does not make every device perform the full MTProto API request. It provides a public generation and distribution pipeline:
+
+```text
+Telegram help.getConfig (primary source)
+  + signed, encrypted apv3.stel.com recovery configuration
+  + bootstrap endpoints bundled in official Telegram clients
+       └─ Surge's public generator merges, deduplicates, and converts them to JSON
+            └─ Surge app snapshot + disk cache + online updates
+```
+
+The default update endpoint is this public file:
+
+[View Surge's current MTProto DC mapping JSON](https://raw.githubusercontent.com/surge-networks/MTProtoDCConfigGenerator/refs/heads/main/mtproto-dc-config.json)
+
+It is produced by the public [`surge-networks/MTProtoDCConfigGenerator`](https://github.com/surge-networks/MTProtoDCConfigGenerator) repository. The generator requires no Telegram account or user authorization. It opens an MTProto connection, calls `help.getConfig`, then merges Telegram's public recovery configuration and production bootstrap addresses embedded in the official iOS and Desktop clients. Failure to fetch the recovery configuration does not stop the primary path. It intentionally does not access Telegram iOS's private CloudKit emergency configuration. The output contains no account information or private credentials and looks roughly like this:
+
+```json
+{
+  "date": 1784785563,
+  "expires": 1784789401,
+  "options": [
+    {
+      "flags": 1,
+      "id": 1,
+      "ip": "2001:0b28:f23d:f001:0000:0000:0000:000a",
+      "port": 443
+    }
+  ]
+}
+```
+
+Here, `id: 1` means DC 1 and `flags: 1` marks IPv6. The `2001:b28:f23d:f001::a` endpoint observed earlier in this article is simply the compressed spelling of the address above.
+
+According to the [Surge MTProto manual](https://manual.nssurge.com/others/mtproto.html#6-dc-configuration-cache-and-updates), the app bundle includes a generated production DC snapshot, so the first connection does not depend on GitHub being reachable. At runtime:
+
+1. Surge loads a valid persistent JSON mapping if one exists.
+2. Otherwise, it loads the bundled snapshot.
+3. Every connection resolves immediately against the current in-memory mapping; it does not wait for an update.
+4. If no persistent file exists, or its modification date is more than 30 days old, the next access starts a non-blocking update.
+5. A download failure, non-200 response, or invalid JSON leaves the existing mapping intact.
+
+To avoid the default GitHub endpoint, `[MTProto]` can use `dc-config-url` to point at a complete, self-hosted JSON document:
+
+```ini
+dc-config-url = https://example.com/telegram/mtproto-dc-config.json
+```
+
+This overrides the **update source**; it is not a way to write `DC 1 = some IP` inline in the profile. A custom file should be produced from the production configuration with the generator above, not assembled as an arbitrary static IP list.
+
+Surge then selects an endpoint:
+
+- A positive DC ID such as `2` requests a general endpoint; `-2` requests a media endpoint for the same DC.
+- `ipv6=false` retains only IPv4 candidates; `ipv6=true` retains only IPv6.
+- Surge filters endpoints requiring unsupported `tcpo_only` or per-endpoint-secret transports.
+- A general request excludes media-only endpoints; a media request prefers media-only endpoints. Telegram endpoints flagged `static` are preferred.
+- Surge starts with the first eligible endpoint. If the backend cannot be established or closes before returning any data, the next connection for that DC uses the next candidate.
+- After all candidates fail, Surge clears the failure marks and starts again.
+
+The accurate model is therefore: **a DC ID maps to a public, updateable set of candidate endpoints with purpose and address-family flags; Surge selects among them using the signed DC ID, the `ipv6` setting, and connection results.**
+
+> Telegram also publishes `getProxyConfig`, which the official MTProxy server uses for its backend `proxy_for` routing table. Surge's manual explicitly states that its direct DC mapping here comes from JSON generated from `help.getConfig`. Both are public, but they are different configurations—and neither should be confused with the 16-byte secret that clients use to connect to the proxy.
+
+### The essential differences
+
+| Dimension | SOCKS5 | MTProto Proxy |
+| --- | --- | --- |
+| Purpose | General TCP/UDP proxy | Telegram-specific proxy |
+| What the client tells the proxy | Exact `IP/domain + port` | Transport type + DC ID |
+| Who selects the Telegram service IP | Telegram client | Surge / MTProxy |
+| Address information in the first request | Explicit `ATYP + DST.ADDR` | Encrypted DC ID inside a 64-byte obfuscated header |
+| Proxy-layer traffic obfuscation | No | Yes, AES-CTR derived from the proxy secret |
+| Telegram message encryption | Still provided by inner MTProto | Still provided by inner MTProto |
+| Effect of this IPv6 encoding bug | Traverses the broken code | Completely bypasses SOCKS5 address encoding |
+
+Surge's workaround is therefore not “recognize a bad IPv4 address and guess the original IPv6.” It changes the information exchanged at the protocol boundary: **do not ask Telegram for an address it may encode incorrectly; ask only for the DC ID and let Surge choose the endpoint.**
+
+## Configuration
+
+Add this section to the Surge profile:
+
+```ini
+[MTProto]
+interface = 127.0.0.1
+port = 5753
+secret = <32 random hexadecimal characters>
+ipv6 = true
+```
+
+Generate a secret with:
+
+```bash
+openssl rand -hex 16
+```
+
+Then add an **MTProto** proxy in Telegram:
+
+- Server: `127.0.0.1`
+- Port: `5753`
+- Secret: exactly the same value as in the Surge profile
+
+You can also open this Telegram deep link to add the local proxy in one step:
+
+[Add the Surge MTProto proxy in Telegram](tg://proxy?server=127.0.0.1&port=5753&secret=75e2bb27aea0b667a92543b86e7989f8)
+
+It is equivalent to entering `127.0.0.1`, `5753`, and the corresponding secret manually. If you regenerate the secret, replace it in both the Surge profile and the link's `secret=` parameter. Because the server is a loopback address, the link can connect only to Surge running on the same device that opens it.
+
+Once the new proxy is connected, **delete** the old SOCKS5 entry from Telegram and restart Telegram. Turning the SOCKS5 switch off is not enough: Telegram may probe saved proxies for availability, so retaining the old entry can continue generating malformed requests.
+
+> This also works on iOS. Keep `interface` at `127.0.0.1` because Telegram and Surge run on the same device. Do not use `0.0.0.0`; there is no reason to expose the MTProto listener to the LAN.
+
+## What `ipv6=true` actually controls
+
+This is easy to misread. `interface = 127.0.0.1` is the **local ingress from Telegram to Surge**, so it uses IPv4 loopback. `ipv6 = true` controls the **outgoing leg from Surge, through the selected policy, to a Telegram DC**. These are different connections and do not conflict.
+
+With it enabled, Surge selects IPv6 service addresses for the requested DC. Observed targets included:
+
+```text
+2001:b28:f23d:f001::a
+2001:b28:f23f:f005::a
+2001:67c:4e8:f004::b
+```
+
+There is one hard requirement: **the entire outbound proxy chain must be able to carry IPv6 destinations**. There is no guarantee of automatic IPv4 fallback. If a node cannot forward IPv6, the connection fails. When uncertain, begin with `ipv6 = false`, verify MTProto first, then enable IPv6 and confirm that successful IPv6 DC connections appear in Surge.
+
+## IPv6 versus IPv4 over the same exit
+
+SOCKS CONNECT timing is not a valid comparison. Surge accepts the local request first and establishes the remote connection asynchronously, so sub-millisecond results measure only the local proxy response, not the Telegram path.
+
+I used a real MTProto handshake instead: send `req_pq_multi` separately to DC1 over IPv4 at `149.154.175.54:443` and IPv6 at `2001:b28:f23d:f001::a:443`, then measure until `resPQ` arrives. Both groups traversed the same Hysteria exit and contained 12 samples after warm-up.
+
+| Target | Success | Minimum | Median | Mean | P95 / maximum |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| IPv4 | 12/12 | 272.28ms | 273.92ms | 274.18ms | 276.28ms |
+| IPv6 | 12/12 | 277.53ms | 279.02ms | 279.14ms | 282.70ms |
+
+IPv6 added about **5.1ms (1.9%)** to the median, with all 12 attempts succeeding. During another 15-second sample of real Telegram traffic, existing connections stayed alive, new connections succeeded, and there were no failures or malformed `0/8` destinations.
+
+The goal here was never to make IPv6 benchmark faster. It was to avoid the path where Telegram's IPv4 nodes can occasionally hang without responding. On this route, trading less than 2% latency for that stability was worthwhile.
+
+## Final state
+
+After the switch, all 13 active Telegram MTProto connections in Surge used IPv6. SOCKS5 connections were zero, failures were zero, and no new `0.x.x.x` targets appeared.
+
+The entire issue in one sentence:
+
+> Telegram handed an IPv6 destination to SOCKS5 code that only packaged IPv4; after parsing failed, it sent four uninitialized bytes to Surge. Surge MTProto Server bypassed that code by taking over the mapping from DC IDs to service endpoints.
+
+To stop the garbage connection attempts immediately, reject `0.0.0.0/8`. To solve the problem at the connection-path level, use Surge MTProto and delete the old SOCKS5 entry. If the exit supports IPv6, enable `ipv6 = true`.
+
+## Let AI configure it
+
+If you do not want to locate profiles, generate secrets, and inspect connection records manually, give the following prompt to Codex, Claude Code, or another AI agent with local file and command-line access on your Mac:
+
+```text
+You are helping me configure Surge MTProto Server. The goal is to stop local
+Telegram from using SOCKS5, route it through Surge's local MTProto Server,
+and force Telegram IPv6 DCs when the outbound path supports them.
+
+Follow these rules strictly:
+- If Surge ships a skill, read it completely and follow it first.
+- Do not guess my active profile. List the .conf files you find and ask me
+  to choose one.
+- Never print passwords, tokens, subscription URLs, or other secrets already
+  present in a profile.
+- After I choose, make a timestamped backup and modify only that copy.
+- Never reload first. After every edit, run surge-cli --check <copy-path>.
+  If validation fails, repair the copy; do not reload the original profile.
+- Even after validation succeeds, stop and show me a non-sensitive change
+  summary and the copy path. Do not reload or switch profiles until I
+  explicitly approve.
+
+Steps:
+1. Confirm that the Surge version supports MTProto Server. The known test
+   builds are Surge Mac 6.8.0 (11830) on macOS and Surge 5 5.102.0 (3786)
+   on iOS. For an older build, only explain how to upgrade or switch to the
+   test channel. For a newer build, verify in the release notes that
+   [MTProto] remains supported.
+2. Locate Surge CLI. Prefer surge-cli in PATH; otherwise use
+   /Applications/Surge.app/Contents/Applications/surge-cli.
+3. Collect a read-only baseline with surge-cli --raw environment,
+   surge-cli --raw dump policy, and surge-cli --raw dump profile. Do not
+   reproduce sensitive values from the output in the conversation.
+4. List available profiles and ask me to select one. Create a backup copy of
+   the selected file and edit only the copy.
+5. Run openssl rand -hex 16 to create a 32-character hexadecimal secret.
+   Add this section to the copy. If [MTProto] already exists, update it
+   minimally instead of creating a duplicate:
+
+   [MTProto]
+   interface = 127.0.0.1
+   port = 5753
+   secret = <the generated secret>
+   ipv6 = true
+
+6. Run surge-cli --check <copy-path>. Only after the result clearly says the
+   profile is valid, give me:
+   - a non-sensitive change summary;
+   - the copy path;
+   - the Server and Port to enter manually in Telegram;
+   - a clickable deep link in this form:
+     tg://proxy?server=127.0.0.1&port=5753&secret=<generated-secret>.
+   Then stop and wait for my approval. Do not reload.
+7. After I confirm and switch/reload the profile, have me add the MTProto
+   proxy through the deep link. Once connected, remind me to delete the old
+   SOCKS5 entry and restart Telegram; merely switching it off is not enough.
+8. Verify using Surge's active connections and recent requests:
+   - Telegram ingress should be MTProto, not SOCKS5;
+   - no new requests to 0.0.0.0/8:443 should appear;
+   - with ipv6=true, Telegram backend targets should be successful IPv6
+     connections;
+   - check for failures or an outbound chain that cannot carry IPv6.
+9. If MTProto itself works but every IPv6 connection fails, do not claim an
+   automatic IPv4 fallback. Change ipv6 to false in the copy, run --check
+   again, and wait for my approval before reloading.
+10. Report the final verification results and backup location. Do not delete
+    the backup or overwrite the original profile unless I explicitly ask.
+```

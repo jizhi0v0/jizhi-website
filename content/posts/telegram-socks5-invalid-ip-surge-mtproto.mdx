@@ -1,0 +1,377 @@
+---
+title: Telegram 为何反复连接 0.48.0.158？追到 SOCKS5 源码，再用 Surge MTProto 绕开
+date: 2026-07-24
+category: 工具
+tags: [Telegram, Surge, SOCKS5, MTProto, IPv6, 网络]
+excerpt: Surge 四天记录到 4,831 次发往 0.0.0.0/8 的失败请求。一路追到 Telegram 的 SOCKS5 IPv6 编码 bug，Surge 6.8 新增的 MTProto Server 恰好绕开了它。
+---
+
+事情从 Surge 里一条很不像真的连接开始：
+
+```text
+Telegram → 0.48.0.158:443
+```
+
+后面还有 `0.0.0.0:443`、`0.166.119.112:443`，共同点是都落在 `0.0.0.0/8`。这不是 Telegram 的什么隐藏节点，也不是 Surge Fake IP 泄漏；它是 **Telegram 的 SOCKS5 实现把 IPv6 目标错误编码成 IPv4 后，送到 Surge 的垃圾地址**。
+
+更巧的是，刚把根因翻到源码，**Surge Mac 6.8.0 (11830)** 就加了 **MTProto Server**；对应的 iOS 测试版本是 **Surge 5 5.102.0 (3786)**。它让 Telegram 不再通过 SOCKS5 指定某个 IP，而只把 DC（Data Center）编号交给 Surge，由 Surge 自己选择真正的 Telegram 服务地址。它没有修 Telegram 的代码，但完整绕开了出错的那条路径。
+
+先给最终结果：切到 MTProto、删除 Telegram 里旧的 SOCKS5 项并重启后，`0.x.x.x` 消失，Telegram 全部改走正常的 IPv6 DC；同一代理链下 IPv6 比 IPv4 中位数只慢约 5ms，没有失败，值得继续开着。
+
+## 先证明：请求确实来自 Telegram
+
+Surge 的连接记录给得很完整：
+
+- 进程是 `/Applications/Telegram.app/Contents/MacOS/Telegram`；
+- 入站协议是 SOCKS5；
+- 目标全部是 `0.x.x.x:443`；
+- 请求命中 `LAN → DIRECT`，随后以 `No route to host` 失败；
+- 同一时间，正常的 `149.154.x.x`、`91.108.x.x` Telegram DC 连接仍然成功。
+
+`0.0.0.0/8` 在 [IANA IPv4 Special-Purpose Address Registry](https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml) 里叫 “This network”，不是能在公网路由的普通地址。所以 `0.48.0.158:443` 不可能是一个真实可访问的 Telegram 节点，Surge 尝试直连它当然只会失败。
+
+这也不是偶发的一两个包。回看四天的 Surge 历史记录：
+
+| 日期 | 失败次数 | 不同的 `0/8` 地址 |
+| --- | ---: | ---: |
+| 7 月 20 日 | 594 | 32 |
+| 7 月 21 日 | 1,537 | 55 |
+| 7 月 22 日 | 938 | 36 |
+| 7 月 23 日 | 1,762 | 40 |
+| **合计** | **4,831** | **114（去重后）** |
+
+其中 `0.48.0.158` 出现 1,529 次，`0.48.58.130` 出现 1,526 次。Telegram 官方 bug tracker 里也有人记录过[同类 `0.x.x.x:443` 连接](https://bugs.telegram.org/c/36949/12)，不是这一台机器独有。
+
+## 中途排除过两个看起来很合理的解释
+
+第一反应是 Telegram 从 DC 配置或备用配置里拿到了坏地址。因为 MTProto 客户端确实会动态获取 DC 列表，这个方向逻辑上说得通，但解释不了为什么会连续出现大量不同的 `0/8` 地址。
+
+另一个说法是“IPv4 字节序反了”。可正常 DC 地址在 Surge 里显示完全正确，而异常值也无法稳定反推出 Telegram 的真实节点。若真是统一的端序错误，正常连接不该毫发无损。
+
+最后还是源码把这两个猜想都否了。
+
+## 源码里的 bug：ATYP 写死为 IPv4
+
+macOS 版 Telegram 和 iOS 版共享 MtProtoKit。官方仓库的 [`MTTcpConnection.m`](https://github.com/TelegramMessenger/Telegram-iOS/blob/6ad963e5b62d354da79040f388ae2b9132fb17b8/submodules/MtProtoKit/Sources/MTTcpConnection.m#L1435-L1475) 在构造 SOCKS5 CONNECT 请求时，有这样一段：
+
+```objc
+req.AddrType = 1;
+struct in_addr ip4;
+inet_aton(_scheme.address.ip.UTF8String, &ip4);
+req.DestAddr.IPv4 = ip4;
+```
+
+问题是三件事叠在了一起：
+
+1. `AddrType = 1` 被写死。按 [RFC 1928](https://datatracker.ietf.org/doc/html/rfc1928#section-4)，SOCKS5 的 `ATYP=0x01` 表示后面是 4 字节 IPv4，IPv6 应该使用 `ATYP=0x04` 和 16 字节地址。
+2. `inet_aton()` 只解析 IPv4。传入 IPv6 字符串时会失败。
+3. 代码既不检查 `inet_aton()` 的返回值，也没有先把 `ip4` 初始化为零，随后仍把这 4 字节写入请求。
+
+于是，当 Telegram 选中一个 IPv6 DC，却通过这段 SOCKS5 代码连接时，Surge 收到的不是 IPv6，而是一个格式上合法、内容却来自未初始化内存的 4 字节“IPv4”。解释成点分十进制，就成了 `0.48.0.158` 之类的地址。
+
+所以准确说法不是“Surge 把 IPv6 解析错了”，而是 **Telegram 在发送前已经违反 SOCKS5 的地址类型约定**。Surge 只是在忠实处理客户端声称的 `ATYP=IPv4`。
+
+这也解释了为什么地址会变化、为什么全是 443、为什么正常 IPv4 DC 同时不受影响，以及为什么它们只在 Telegram 启用 SOCKS5 时出现：走系统网络或 VIF 时，不会经过 Telegram 这段 SOCKS5 封包代码。
+
+## 第一层止血：拒绝 `0.0.0.0/8`
+
+在找到更好的办法前，我先在规则集里加了：
+
+```ini
+IP-CIDR,0.0.0.0/8,REJECT,no-resolve
+```
+
+这能阻止 Surge 对这些不可路由目标反复发起连接，连接记录也从 `No route to host` 变成即时 `REJECT`。它适合作为防御性规则，但只是止血：Telegram 仍在不断生成错误请求，代理功能本身没有被修复。
+
+## Surge 的 workaround：让 Telegram 说 DC，不再说 IP
+
+本次测试所用版本为：
+
+- **macOS：Surge Mac 6.8.0 (11830)**
+- **iOS：Surge 5 5.102.0 (3786)，ready to test**
+
+这两个测试版本新增的 [MTProto Server](https://manual.nssurge.com/others/mtproto.html) 改变了双方的分工：
+
+```text
+旧路径：Telegram --SOCKS5/具体目标 IP--> Surge --代理--> Telegram DC
+新路径：Telegram --MTProto/DC 编号--> Surge --选择真实地址并代理--> Telegram DC
+```
+
+SOCKS5 模式下，目标地址由 Telegram 封进请求；它把 IPv6 错装成 IPv4，Surge 无从猜回原值。MTProto 模式下，Telegram 只告诉 Surge 要去哪个 DC，Surge 自己映射该 DC 的生产地址，因此不会再触发那段有问题的 SOCKS5 地址编码。
+
+这是一条 workaround，不是上游修复：Telegram 源码里的 bug 仍在那里，只是连接不再走到它。
+
+## 线路上到底发了什么：SOCKS5 与 MTProto Proxy
+
+前面说“Telegram 把 DC 编号交给 Surge”是结果，线上实际并不是一段可读的 `dc=1` 文本。两种代理协议从第一包开始就完全不同。
+
+### SOCKS5：请替我连接这个具体地址
+
+SOCKS5 是通用代理协议，不理解 Telegram。TCP 连上 Surge 的 SOCKS5 端口后，客户端先协商认证方式，再发送 CONNECT 请求：
+
+```text
+客户端 → Surge：VER | NMETHODS | METHODS
+Surge → 客户端：VER | METHOD
+
+客户端 → Surge：VER | CMD=CONNECT | RSV | ATYP | DST.ADDR | DST.PORT
+Surge → 客户端：VER | REP | RSV | ATYP | BND.ADDR | BND.PORT
+
+协商完成后：原样转发 Telegram 的二进制数据流
+```
+
+其中最关键的是第三行。按 [RFC 1928](https://datatracker.ietf.org/doc/html/rfc1928#section-4)，`ATYP=0x01` 后面必须跟 4 字节 IPv4，`0x03` 是域名，`0x04` 才是 16 字节 IPv6。也就是说，**目标地址的选择和编码由 Telegram 完成**，Surge 只按请求里的 `DST.ADDR:DST.PORT` 去拨号。
+
+这正是本次 bug 的入口：Telegram 明明拿到 IPv6 DC，却发送 `ATYP=0x01` 和 4 字节未初始化数据。Surge 看到的是一个语法完整的 IPv4 CONNECT 请求，并不知道原始 IPv6 是什么，也没有足够信息把它恢复出来。
+
+SOCKS5 本身也不加密后续业务流量。它只是建立一条通用字节管道；这里的 Telegram 内容之所以不是明文，是因为内层 MTProto 本来就有自己的客户端—服务器加密，而不是 SOCKS5 提供了加密。
+
+### MTProto Proxy：我要去这个 DC
+
+Telegram 的 MTProto Proxy 则是专用协议。TCP 连上 Surge 的 MTProto 端口后，客户端先构造一个 **64 字节随机初始化头**。按 Telegram 官方的 [MTProto transport obfuscation 规范](https://core.telegram.org/mtproto/mtproto-transports#transport-obfuscation)，它在逻辑上包含：
+
+```text
+偏移  0..55：随机数据（其中一部分用于派生双向 key / IV）
+偏移 56..59：MTProto transport 标识
+偏移 60..61：DC ID（16 位有符号小端整数）
+偏移 62..63：随机数据
+```
+
+但这个结构不会原样出现在网络上。发送前，Telegram 会：
+
+1. 从随机头中取出双向 key seed 和 IV；
+2. 把 key seed 与配置里的 16 字节 proxy secret 拼接后做 SHA-256，得到 AES-256 key；
+3. 用 AES-256-CTR 加密初始化头；
+4. 只把加密后的最后 8 字节放回待发送的 64 字节头；
+5. 沿用同一组 AES-CTR 状态，继续混淆后续整条连接。
+
+所以抓包看到的前 64 字节看起来仍像随机数，transport 标识和 DC ID 也不会裸奔。Surge 持有同一个 secret，才能验证并解开这一层，读出“要连接哪个 DC”，再从 Telegram DC 配置中选择具体的 IPv4 或 IPv6 服务地址。官方 [MTProxy 实现](https://github.com/TelegramMessenger/MTProxy) 还会获取 Telegram 提供的后端 proxy secret 和 DC 配置；代理管理员另行生成供客户端接入的 16 字节 secret，`tg://proxy` 链接携带的是后者，别把两种 secret 混在一起。
+
+后续负载可以理解为两层：
+
+```text
+外层：由 proxy secret 派生的 AES-CTR 混淆层
+  └─ MTProto transport 帧（abridged / intermediate / padded intermediate 等）
+       └─ Telegram MTProto 加密消息
+```
+
+这里的 proxy secret **不是 Telegram 账号的授权密钥，也不是聊天加密密钥**。它只用于识别代理客户端和混淆客户端到代理这一段连接。Surge 解开外层后，可以知道 DC ID、连接时序和数据量，并转发 MTProto 帧；内层消息仍由 Telegram 客户端与 Telegram DC 之间的 MTProto auth key 加密，代理没有这枚 auth key，不能因此读到聊天明文。
+
+### DC ID 对应的服务地址从哪里来？
+
+这张表是**公开的动态配置**，不是 Surge 猜的，也不是一个 DC 永久绑定一个 IP。
+
+Telegram 的 MTProto API 提供 [`help.getConfig`](https://core.telegram.org/method/help.getConfig)，而且官方文档明确写着它可以在未认证连接上调用。返回的 [`config`](https://core.telegram.org/constructor/config) 里有 `dc_options: Vector<DcOption>`，也就是当前生产环境的 DC 地址列表；每个 [`dcOption`](https://core.telegram.org/constructor/dcOption) 包含：
+
+- `id`：DC ID；
+- `ip_address` 和 `port`；
+- `ipv6`、`media_only`、`tcpo_only`、`cdn`、`static` 等标志；
+- 某些端点还带独立 transport secret。
+
+同一个 DC 因此可以同时有多个 IPv4、IPv6、普通业务和媒体端点。配置还带 `expires`，客户端知道什么时候应该重新获取。
+
+Surge 没有要求每台设备自己跑完整的 MTProto API 请求，而是提供了一个公开的生成与分发链路：
+
+```text
+Telegram help.getConfig（主来源）
+  + apv3.stel.com 签名加密的恢复配置
+  + Telegram 官方客户端内置的 bootstrap 地址
+       └─ Surge 的公开生成器合并、去重并转换为 JSON
+            └─ Surge App 内置快照 + 磁盘缓存 + 在线更新
+```
+
+默认更新地址就是这个公开文件：
+
+[查看 Surge 当前的 MTProto DC 映射 JSON](https://raw.githubusercontent.com/surge-networks/MTProtoDCConfigGenerator/refs/heads/main/mtproto-dc-config.json)
+
+它由公开仓库 [`surge-networks/MTProtoDCConfigGenerator`](https://github.com/surge-networks/MTProtoDCConfigGenerator) 生成。生成器无需 Telegram 账号或用户授权：它直接建立 MTProto 连接调用 `help.getConfig`，再合并 Telegram 公开的恢复配置和官方 iOS / Desktop 客户端内置的生产 bootstrap 地址。恢复配置获取失败也不影响主流程；它不会访问 Telegram iOS 私有的 CloudKit emergency config。输出内容没有账号信息或私有凭据，结构大致如下：
+
+```json
+{
+  "date": 1784785563,
+  "expires": 1784789401,
+  "options": [
+    {
+      "flags": 1,
+      "id": 1,
+      "ip": "2001:0b28:f23d:f001:0000:0000:0000:000a",
+      "port": 443
+    }
+  ]
+}
+```
+
+这里 `id: 1` 就是 DC 1，`flags: 1` 表示 IPv6。文章前面实测的 `2001:b28:f23d:f001::a`，正是上面地址压缩后的写法。
+
+按 [Surge MTProto 手册](https://manual.nssurge.com/others/mtproto.html#6-dc-configuration-cache-and-updates)，App 安装包里先带一份生成好的生产 DC 快照，所以第一次连接不依赖 GitHub 能否访问。运行时的顺序是：
+
+1. 有有效的磁盘持久化 JSON，就优先载入；
+2. 否则使用 App 内置快照；
+3. 每条连接立即用当前内存表解析，不等待网络更新；
+4. 没有磁盘缓存，或缓存文件已超过 30 天时，下一次访问在后台触发更新；
+5. 下载失败、HTTP 状态不对或 JSON 无效，继续保留旧表，不会把当前可用映射清空。
+
+如果不想使用默认 GitHub 地址，也可以在 `[MTProto]` 中用 `dc-config-url` 指向自己托管的完整 JSON：
+
+```ini
+dc-config-url = https://example.com/telegram/mtproto-dc-config.json
+```
+
+这只是**更新源覆盖**，不是让人在 profile 里手写 `DC 1 = 某个 IP`。自建文件应该用上述生成器从生产环境配置生成，不能随便拼一份静态 IP 表。
+
+拿到列表后，Surge 还要做一次选择：
+
+- 客户端发正数 DC ID（如 `2`）表示普通端点，负数（如 `-2`）表示同一 DC 的媒体端点；
+- `ipv6=false` 只保留 IPv4，`ipv6=true` 只保留 IPv6；
+- 过滤 Surge 当前不支持的 `tcpo_only` 或带 per-endpoint secret 的端点；
+- 普通请求排除 media-only，媒体请求优先 media-only，并优先 Telegram 标记为 `static` 的地址；
+- 先用列表中第一个符合条件的端点；如果后端连接未建立，或还没返回任何数据就断开，下次同一 DC 连接换下一个候选；
+- 所有候选都失败后，清除失败标记，再从头开始。
+
+所以 `DC ID → 服务地址` 更准确的理解是：**DC ID 对应一组公开、会更新、带用途和地址族标志的候选端点，Surge 再根据正负 DC ID、`ipv6` 配置和连接结果从中选择。**
+
+> Telegram 另外还公开了 `getProxyConfig`，官方 MTProxy 服务端会用它取得自己的后端 `proxy_for` 转发表；Surge 手册明确说明，其这里的直连 DC 映射来自 `help.getConfig` 生成的 JSON。两者都公开，但不是同一份配置，也不要和客户端连接代理用的 16 字节 secret 混为一谈。
+
+### 最核心的差别
+
+| 维度 | SOCKS5 | MTProto Proxy |
+| --- | --- | --- |
+| 协议定位 | 通用 TCP/UDP 代理 | Telegram 专用代理 |
+| 客户端告诉代理什么 | 具体 `IP/域名 + 端口` | transport 类型 + DC ID |
+| 谁选择 Telegram 服务 IP | Telegram 客户端 | Surge / MTProxy |
+| 首包地址格式 | 明确的 `ATYP + DST.ADDR` | 64 字节混淆头内的加密 DC ID |
+| 代理层是否混淆后续流量 | 否 | 是，proxy secret 派生 AES-CTR |
+| Telegram 消息加密 | 仍由内层 MTProto 完成 | 仍由内层 MTProto 完成 |
+| 本次 IPv6 编码 bug | 会经过出错代码 | 完全绕开 SOCKS5 地址编码 |
+
+因此 Surge 的 workaround 不是“识别错误 IPv4，再猜出它原本是哪条 IPv6”，而是从协议入口就换了一份更合适的信息：**不要 Telegram 提供可能编码错的地址，只要 DC ID，具体节点由 Surge 自己选。**
+
+## 配置
+
+在 Surge profile 中加入：
+
+```ini
+[MTProto]
+interface = 127.0.0.1
+port = 5753
+secret = <32 位随机十六进制字符串>
+ipv6 = true
+```
+
+secret 可以这样生成：
+
+```bash
+openssl rand -hex 16
+```
+
+然后在 Telegram 的代理设置里新增 **MTProto**：
+
+- Server：`127.0.0.1`
+- Port：`5753`
+- Secret：与 Surge 配置完全一致
+
+也可以直接打开下面的 Telegram 深链，一键加入这条本机代理：
+
+[在 Telegram 中添加 Surge MTProto 代理](tg://proxy?server=127.0.0.1&port=5753&secret=75e2bb27aea0b667a92543b86e7989f8)
+
+它等价于手动填写 `127.0.0.1`、`5753` 和对应 secret。若你重新生成了 secret，记得同时替换 Surge 配置和链接中的 `secret=`；因为 Server 是 loopback 地址，这个链接只能连接打开它的同一台设备上的 Surge。
+
+确认新代理已连接后，把旧 SOCKS5 项从 Telegram 里**删除**，再重启 Telegram。只关闭 SOCKS5 的开关还不够稳妥：Telegram 会对保存的代理做可用性探测，旧项留着仍可能继续制造异常请求。
+
+> iOS 也适用，但 `interface` 仍应保持 `127.0.0.1`，因为 Telegram 与 Surge 都在同一台设备上。不要写 `0.0.0.0`，没有必要把 MTProto 监听暴露给局域网。
+
+## `ipv6=true` 到底做了什么
+
+这里很容易误解：`interface = 127.0.0.1` 是 **Telegram 连接 Surge 的本地入口**，它是 IPv4 loopback；`ipv6 = true` 控制的是 **Surge 从代理出口连接 Telegram DC 的后半程**。两者不是同一条连接，也不矛盾。
+
+打开后，Surge 会为 DC 选择 IPv6 服务地址。本次实际观察到的目标包括：
+
+```text
+2001:b28:f23d:f001::a
+2001:b28:f23f:f005::a
+2001:67c:4e8:f004::b
+```
+
+要注意一个硬条件：**整条出站代理链都必须能转发 IPv6 目标**。这里没有“IPv6 不通就自动回落 IPv4”的保证；节点不支持时，连接会失败。拿不准就先用 `ipv6 = false`，确认 MTProto 工作后再开 IPv6，并观察连接记录里是否有成功的 IPv6 DC。
+
+## 同一出口下，IPv6 和 IPv4 差多少
+
+不能用“SOCKS CONNECT 建立耗时”来比较。Surge 会先在本机快速接收请求，再异步建立远端连接，这样测出来的亚毫秒数字只是本地代理响应，不是 Telegram 链路延迟。
+
+我最终用真实 MTProto 握手做 A/B：分别向 DC1 的 IPv4 `149.154.175.54:443` 和 IPv6 `2001:b28:f23d:f001::a:443` 发送 `req_pq_multi`，测到收到 `resPQ` 为止；两组都经过同一条 Hysteria 出口，各预热后采样 12 次。
+
+| 目标 | 成功 | 最低 | 中位数 | 平均 | P95 / 最高 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| IPv4 | 12/12 | 272.28ms | 273.92ms | 274.18ms | 276.28ms |
+| IPv6 | 12/12 | 277.53ms | 279.02ms | 279.14ms | 282.70ms |
+
+IPv6 中位数慢约 **5.1ms（1.9%）**，但 12 次全部成功。真实 Telegram 业务再观察 15 秒：已有连接持续存活、新建连接成功、没有失败，也没有再出现畸形 `0/8` 地址。
+
+这里追求的本来就不是让 IPv6 跑出更低的延迟，而是避开 Telegram IPv4 节点偶发卡住、无响应的路径。以不到 2% 的延迟差换稳定性，在这条线路上是划算的。
+
+## 最后的状态
+
+切换后，Surge 里 13 条活跃 Telegram MTProto 连接全部是 IPv6，SOCKS5 为 0，失败为 0，`0.x.x.x` 也没有再出现。
+
+整个问题可以压缩成一句话：
+
+> Telegram 把 IPv6 目标交给只会封装 IPv4 的 SOCKS5 代码，解析失败后又把未初始化的 4 字节发给 Surge；Surge MTProto Server 通过接管 DC 到服务地址的映射，绕开了这段代码。
+
+如果只想立刻止住日志里的垃圾连接，加 `0.0.0.0/8,REJECT`；如果想从连接路径上解决，改用 Surge MTProto，删掉旧 SOCKS5。出口支持 IPv6的话，再开 `ipv6 = true`。
+
+## 交给 AI 快速配置
+
+不想自己找 profile、生成 secret 和盯连接记录，可以把下面这段提示词交给 Codex、Claude Code，或其他能在 Mac 上操作文件和命令行的 AI agent：
+
+```text
+你是帮我配置 Surge MTProto Server 的助手。目标是让本机 Telegram 不再使用
+SOCKS5，而是通过 Surge 的本地 MTProto Server 接管 Telegram 连接，并在出口
+支持时强制使用 Telegram IPv6 DC。
+
+请严格遵守：
+- 如果 Surge 自带 skill，先完整阅读并按它操作。
+- 在我选定 profile 之前不要猜当前配置；列出找到的 .conf 文件让我选择。
+- 不要在输出中展示 profile 里已有的密码、token、订阅 URL 或其他 secret。
+- 选定后先复制一份带时间戳的备份，只修改副本。
+- 绝对不要先 reload。每次修改后必须先用 surge-cli --check <副本路径>
+  做语法检查；检查失败就修副本，不得 reload 原配置。
+- 即使检查通过，也要停下来展示改动摘要和副本路径，等我明确确认后才能 reload
+  或切换 profile。
+
+步骤：
+1. 确认 Surge 版本支持 MTProto Server。本次已知可测试版本是：
+   macOS Surge Mac 6.8.0 (11830)，iOS Surge 5 5.102.0 (3786)。
+   低于对应版本就只告诉我如何升级或切换测试渠道，不要继续改配置；更高版本则
+   先查 release note，确认仍支持 [MTProto] 后再继续。
+2. 找到 Surge CLI：优先使用 PATH 中的 surge-cli，否则使用
+   /Applications/Surge.app/Contents/Applications/surge-cli。
+3. 只用只读命令收集基线：surge-cli --raw environment、
+   surge-cli --raw dump policy、surge-cli --raw dump profile。不要把其中的敏感值
+   原样贴到对话里。
+4. 列出可用 profile，让我选；为选中的文件创建备份副本，之后只编辑副本。
+5. 用 openssl rand -hex 16 生成 32 位十六进制 secret。在副本里加入下面的段；
+   如果已有 [MTProto]，就最小化更新已有段，不要重复创建：
+
+   [MTProto]
+   interface = 127.0.0.1
+   port = 5753
+   secret = <刚生成的 secret>
+   ipv6 = true
+
+6. 运行 surge-cli --check <副本路径>。只有输出明确表示通过，才能把以下内容给我：
+   - 不含敏感值的改动摘要；
+   - 副本路径；
+   - Telegram 手动填写的 Server 和 Port；
+   - 一条可点击的 tg://proxy 深链，格式为
+     tg://proxy?server=127.0.0.1&port=5753&secret=<刚生成的 secret>。
+   然后停下，等我确认。不要自行 reload。
+7. 我确认并切换/重载配置后，让我在 Telegram 中通过深链新增 MTProto 代理。
+   确认连接成功后，提醒我删除旧 SOCKS5 项并重启 Telegram；只关闭开关不算删除。
+8. 用 Surge 的活动连接和近期请求做只读验证：
+   - Telegram 入站协议应为 MTProto，不再是 SOCKS5；
+   - 不应再出现新的 0.0.0.0/8:443 请求；
+   - ipv6=true 时，Telegram 后端目标应是成功连接的 IPv6 地址；
+   - 检查是否有连接失败或代理链不支持 IPv6。
+9. 如果 MTProto 正常但 IPv6 全部失败，不要声称会自动回落 IPv4。先把副本中的
+   ipv6 改为 false，再次执行 --check，并等我确认后才 reload。
+10. 最后报告验证结果和备份位置。不要删除备份，也不要覆盖原 profile，除非我明确要求。
+```

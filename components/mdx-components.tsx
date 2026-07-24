@@ -9,6 +9,12 @@ export const mdxComponents = {
   blockquote: ({ children }: ComponentPropsWithoutRef<"blockquote">) => (
     <div className="callout">{children}</div>
   ),
+  // GFM 表格包一层横向滚动容器，窄屏不挤坏正文布局。
+  table: (props: ComponentPropsWithoutRef<"table">) => (
+    <div className="table-scroll">
+      <table {...props} />
+    </div>
+  ),
   // 代码块（rehype-pretty-code 输出 <pre>）包一层带复制按钮的容器。
   pre: (props: ComponentPropsWithoutRef<"pre">) => <CodeBlock {...props} />,
   // 图片包成 figure 风格；tabIndex+role 让键盘用户也能触发 Lightbox（Enter/Space）。
