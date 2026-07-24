@@ -413,6 +413,8 @@ hr {
   margin: 40px 0;
 }
 .post-body {
+  min-width: 0;
+  max-width: 100%;
   font-family: var(--font-serif);
   font-size: 17.5px;
   line-height: 1.85;
@@ -447,7 +449,11 @@ hr {
 
 /* GFM 表格：保持正文的纸张质感，并在窄屏允许横向滚动。 */
 .post-body .table-scroll {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   max-width: 100%;
+  contain: inline-size;
   margin: 1.6em 0;
   overflow-x: auto;
   border: 1px solid var(--rule);
@@ -627,17 +633,25 @@ hr {
    直接吃掉 80px：代码块被挤窄、右侧留出大片空白、超长行更早触发内部横向滚动。归零，
    纵向间距仍交由内层 .code-block 承担。 */
 .post-body figure[data-rehype-pretty-code-figure] {
+  min-width: 0;
+  max-width: 100%;
   margin: 0;
 }
 /* 复制按钮包裹层承担外边距，pre 自身归零，按钮才好绝对定位到代码块右上角。 */
 .post-body .code-block {
   position: relative;
+  min-width: 0;
+  max-width: 100%;
   margin: 1.6em 0;
 }
 .post-body .code-block > pre {
   margin: 0;
 }
 .post-body pre {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   background: var(--code-bg);
   border: 1px solid var(--rule);
   border-radius: 4px;
@@ -748,6 +762,9 @@ hr {
   padding: 1px 5px;
   border-radius: 3px;
   color: var(--ink);
+}
+.post-body :not(pre) > code {
+  overflow-wrap: anywhere;
 }
 .post-body pre code {
   background: none;
@@ -1386,6 +1403,14 @@ hr {
   }
   .post-body {
     font-size: 16.5px;
+  }
+  /* table 的 min-content 宽度不能反向撑大 article；宽表只在自身内部滚动。 */
+  .post-body .table-scroll {
+    width: calc(100vw - 64px);
+    max-width: calc(100vw - 64px);
+  }
+  .post-body table {
+    min-width: 100%;
   }
   /* 移动端：单图限高，避免整屏截图过于突兀；点开看大图 */
   .post-body .post-img {
