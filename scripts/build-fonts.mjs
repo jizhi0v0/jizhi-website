@@ -38,50 +38,94 @@ const srcUrl = (w) =>
   `https://cdn.jsdelivr.net/npm/@fontsource/noto-serif-sc@5/files/noto-serif-sc-chinese-simplified-${w}-normal.woff2`;
 
 // 收集需要覆盖的字形。
-function collectText() {
-  const chars = new Set();
+//
+// 分两个面，因为三个字重的用量差得很远：400 要扛全部正文，600/700 只出现在标题、
+// 表头、强调这些地方。原先三个字重共用同一份全量子集，等于让 600/700 各自白扛一份
+// 正文字形（实测各约 176/179KB，一篇文章页三份全下 = 542KB，比整站 JS 还多）。
+//
+// heavy 面必须是「所有可能以 600/700 渲染的文本」的超集——漏一个字，那个字就掉到
+// 系统衬线，标题里会出现一个字形不一致的字。所以下面宁可多收：整段 frontmatter、
+// 整张表格、整行 JSX 标签都原样吃进来，不做精细切分。判据取自 globals.css 里所有
+// font-weight ≥ 600 的规则：
+//   .brand / .post-title / .post-body h2 / .post-body th / .tweet-name /
+//   .tweet-avatar-fallback / .about-page h1 / .archive-page h1 / .tags-page h1
+// 以及 <strong>（CSS 里没有任何规则用 700，700 只服务浏览器默认的 bold）。
+export function collectSets() {
+  const body = new Set();
+  const heavy = new Set();
+  const add = (set, str) => {
+    for (const ch of str) {
+      const c = ch.codePointAt(0);
+      if (c > 0x20 && c !== 0x7f) set.add(ch);
+    }
+  };
 
   // 基线：ASCII 可打印字符 + 中文排版常用标点 + 运行时生成而正文里不一定出现的字
-  // （日期 formatFull 会渲染「年/月/日」，见 lib/i18n.ts）。
-  for (let c = 0x20; c <= 0x7e; c++) chars.add(String.fromCodePoint(c));
+  // （日期 formatFull 会渲染「年/月/日」，见 lib/i18n.ts）。两个面都要。
+  for (let c = 0x20; c <= 0x7e; c++) {
+    body.add(String.fromCodePoint(c));
+    heavy.add(String.fromCodePoint(c));
+  }
   for (const ch of "　、。〈〉《》「」『』【】〔〕・ー…—–‘’“”·※×÷°％‰①②③④⑤⑥⑦⑧⑨⑩→←↑↓年月日") {
-    chars.add(ch);
+    body.add(ch);
+    heavy.add(ch);
   }
 
   // 实际渲染的文案来源：文章正文（MDX）+ UI 文案（next-intl messages）。
   // 组件里的中文都在注释里、不渲染，故不扫 tsx（见排查记录）。
-  const roots = [
-    { dir: path.join(ROOT, "content"), re: /\.mdx?$/ },
-    { dir: path.join(ROOT, "messages"), re: /\.json$/ },
-  ];
-  const files = [];
-  for (const { dir, re } of roots) walk(dir, re, files);
-  for (const f of files) {
-    for (const ch of fs.readFileSync(f, "utf8")) {
-      const c = ch.codePointAt(0);
-      if (c > 0x20 && c !== 0x7f) chars.add(ch);
-    }
+  const mdx = walk(path.join(ROOT, "content"), /\.mdx?$/, []);
+  const msgs = walk(path.join(ROOT, "messages"), /\.json$/, []);
+
+  // UI 文案整体进 heavy：各页 h1、.brand 都取自 messages，且体量很小。
+  for (const f of msgs) {
+    const s = fs.readFileSync(f, "utf8");
+    add(body, s);
+    add(heavy, s);
   }
 
-  return [...chars].sort().join("");
+  for (const f of mdx) {
+    const s = fs.readFileSync(f, "utf8");
+    add(body, s);
+
+    // frontmatter 整块：title 走 .post-title、tags 进标签页，一并算重字重。
+    const fm = s.match(/^---\r?\n[\s\S]*?\r?\n---/);
+    if (fm) add(heavy, fm[0]);
+
+    const picks = [
+      ...s.matchAll(/^#{1,6} .*$/gm), // markdown 标题
+      ...s.matchAll(/^\s*\|.*$/gm), // 表格整张（表头 th 吃 600）
+      ...s.matchAll(/^\s*<[A-Z][\s\S]*?>/gm), // JSX 标签行（<Tweet name="…"> 等属性）
+      // 强调：整行收，不去猜 `**` 怎么配对。CommonMark 的 flanking 规则遇到全角
+      // 标点会配错位（实例见 surge-tailscale-engine-rewrite.mdx:17，加粗落到了两段
+      // 强调「中间」的文字上），正则按 \*\*…\*\* 取到的范围和解析器实际加粗的范围
+      // 可能完全不是一回事。整行吃进就与配对结果无关，代价只是几十个字形。
+      ...s.matchAll(/^.*(?:\*\*|__|<(?:strong|b)[\s>]).*$/gm),
+    ].map((m) => m[0]);
+    for (const p of picks) add(heavy, p);
+  }
+
+  const str = (set) => [...set].sort().join("");
+  return { body: str(body), heavy: str(heavy) };
 }
 
 function walk(dir, re, out) {
-  if (!fs.existsSync(dir)) return;
+  if (!fs.existsSync(dir)) return out;
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
     if (e.isDirectory()) walk(p, re, out);
     else if (re.test(e.name)) out.push(p);
   }
+  return out;
 }
 
 async function main() {
-  const text = collectText();
-  console.log(`[fonts] 覆盖字形: ${[...text].length}`);
+  const { body, heavy } = collectSets();
+  console.log(`[fonts] 覆盖字形: 正文面 ${[...body].length} / 重字重面 ${[...heavy].length}`);
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
   let failures = 0;
   for (const w of WEIGHTS) {
+    const text = w === 400 ? body : heavy;
     const outPath = path.join(OUT_DIR, `noto-serif-sc-${w}.woff2`);
     try {
       const res = await fetch(srcUrl(w), { headers: { "User-Agent": "Mozilla/5.0" } });
@@ -106,4 +150,7 @@ async function main() {
   }
 }
 
-main();
+// 直接执行才跑子集化；被 import 时只暴露 collectSets（供覆盖率核对用）。
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  main();
+}
