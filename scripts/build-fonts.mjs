@@ -29,6 +29,15 @@ import subsetFont from "subset-font";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = path.join(ROOT, "public", "fonts");
 
+// 真实渲染采集到的重字重字形集（由 scripts/collect-glyphs.mjs 生成并提交）。
+const HEAVY_GLYPHS_FILE = path.join(ROOT, "scripts", "glyphs-heavy.txt");
+
+function readCollectedHeavy() {
+  if (!fs.existsSync(HEAVY_GLYPHS_FILE)) return null;
+  const s = fs.readFileSync(HEAVY_GLYPHS_FILE, "utf8").trim();
+  return s.length ? s : null;
+}
+
 // 字重与 globals.css 里 --font-serif 的用法对齐：400 正文、600 次级标题、700 强调/H1。
 const WEIGHTS = [400, 600, 700];
 
@@ -62,11 +71,14 @@ export function collectSets() {
 
   // 基线：ASCII 可打印字符 + 中文排版常用标点 + 运行时生成而正文里不一定出现的字
   // （日期 formatFull 会渲染「年/月/日」，见 lib/i18n.ts）。两个面都要。
-  for (let c = 0x20; c <= 0x7e; c++) {
-    body.add(String.fromCodePoint(c));
-    heavy.add(String.fromCodePoint(c));
-  }
+  // 单独留一份 baseline：采集到的渲染字形只覆盖「跑那一遍时页面上有的字」，运行时
+  // 才生成的内容（日期等）不在其中，必须并上来。
+  const baseline = new Set();
+  for (let c = 0x20; c <= 0x7e; c++) baseline.add(String.fromCodePoint(c));
   for (const ch of "　、。〈〉《》「」『』【】〔〕・ー…—–‘’“”·※×÷°％‰①②③④⑤⑥⑦⑧⑨⑩→←↑↓年月日") {
+    baseline.add(ch);
+  }
+  for (const ch of baseline) {
     body.add(ch);
     heavy.add(ch);
   }
@@ -111,7 +123,21 @@ export function collectSets() {
   }
 
   const str = (set) => [...set].sort().join("");
-  return { body: str(body), heavy: str(heavy) };
+
+  // 有真实渲染采集到的字形集就用它——那是判据本身，不是推断（见 collect-glyphs.mjs）。
+  // 上面那套静态启发式退居兜底：采集产物缺失时（新克隆还没跑过 glyphs、或有人手删）
+  // 仍能构建出一份「宁可多收」的可用子集，只是白胖 126KB，不会掉字。
+  const collected = readCollectedHeavy();
+  if (collected) {
+    const merged = new Set(baseline);
+    for (const ch of collected) merged.add(ch);
+    return { body: str(body), heavy: str(merged), heavySource: "rendered" };
+  }
+  console.warn(
+    `[fonts] 未找到 ${path.relative(ROOT, HEAVY_GLYPHS_FILE)}，回退到静态启发式（子集会偏大）。` +
+      `如需收紧：先 next build，再跑 \`bun run glyphs\`。`,
+  );
+  return { body: str(body), heavy: str(heavy), heavySource: "heuristic" };
 }
 
 function walk(dir, re, out) {
@@ -125,8 +151,11 @@ function walk(dir, re, out) {
 }
 
 async function main() {
-  const { body, heavy } = collectSets();
-  console.log(`[fonts] 覆盖字形: 正文面 ${[...body].length} / 重字重面 ${[...heavy].length}`);
+  const { body, heavy, heavySource } = collectSets();
+  const src = heavySource === "rendered" ? "真实渲染采集" : "静态启发式兜底";
+  console.log(
+    `[fonts] 覆盖字形: 正文面 ${[...body].length} / 重字重面 ${[...heavy].length}（${src}）`,
+  );
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
   let failures = 0;
