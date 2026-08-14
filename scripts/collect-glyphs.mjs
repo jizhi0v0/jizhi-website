@@ -95,49 +95,52 @@ async function collect(base) {
   // sitemap 不含 404 页，但它同样渲染 UI 文案（标题吃 600），显式补上。
   urls.push(base + "/__not-found__", base + "/en/__not-found__");
 
-  const browser = await chromium.launch();
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-  const page = await ctx.newPage();
   const chars = new Set();
+  const browser = await chromium.launch();
+  try {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const page = await ctx.newPage();
 
-  for (const u of urls) {
-    // DCL 之后再等一次 load：本脚本要的是「所有会以 ≥600 渲染的文本」的超集，
-    // 若某段文本要 hydration 之后才进 DOM，只等 DCL 就会被这一趟扫描漏掉，闸门
-    // 便会静默放过、生产上掉字。当前站点的 Client Component 也走 SSR，所以 DCL
-    // 时刻其实已经够；但一旦有人引入 dynamic(..., { ssr: false }) 或在 useEffect
-    // 里渲出加粗中文，这行就是唯一的防线。
-    // 不用 networkidle：站点挂着 analytics / speed-insights 的长连接，永远等不到
-    // 空闲（同样的理由见 tests/viewport-overflow.spec.ts）。
-    await page.goto(u, { waitUntil: "domcontentloaded" });
-    await page.waitForLoadState("load");
-    const found = await page.evaluate(
-      ({ minWeight, family }) => {
-        const out = [];
-        const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-        let n;
-        while ((n = w.nextNode())) {
-          const t = n.nodeValue;
-          if (!t || !t.trim()) continue;
-          const el = n.parentElement;
-          if (!el) continue;
-          const cs = getComputedStyle(el);
-          if (parseInt(cs.fontWeight, 10) < minWeight) continue;
-          if (!cs.fontFamily.includes(family)) continue;
-          out.push(t);
-        }
-        return out;
-      },
-      { minWeight: HEAVY_MIN_WEIGHT, family: SERIF_FAMILY },
-    );
-    for (const t of found) {
-      for (const ch of t) {
-        const c = ch.codePointAt(0);
-        if (c > 0x20 && c !== 0x7f) chars.add(ch);
-      }
+    for (const u of urls) {
+      // 等到 load：本脚本要的是「所有会以 ≥600 渲染的文本」的超集，若某段文本要
+      // hydration 之后才进 DOM，只等 DOMContentLoaded 就会被这一趟扫描漏掉，闸门
+      // 便会静默放过、生产上掉字。当前站点的 Client Component 也走 SSR，DCL 时刻
+      // 其实已经够；但一旦有人引入 dynamic(..., { ssr: false }) 或在 useEffect 里
+      // 渲出加粗中文，这一步就是唯一的防线。
+      // 不用 networkidle：站点挂着 analytics / speed-insights 的长连接，永远等不到
+      // 空闲（同样的理由见 tests/viewport-overflow.spec.ts）。
+      await page.goto(u, { waitUntil: "load" });
+      // 在页内就去重成字符串再回传：判据只关心「出现过哪些字」，没必要把每个文本
+      // 节点的整段文字都跨 CDP 序列化一遍。
+      const found = await page.evaluate(
+        ({ minWeight, family }) => {
+          const seen = new Set();
+          const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          let n;
+          while ((n = w.nextNode())) {
+            const t = n.nodeValue;
+            if (!t || !t.trim()) continue;
+            const el = n.parentElement;
+            if (!el) continue;
+            const cs = getComputedStyle(el);
+            if (parseInt(cs.fontWeight, 10) < minWeight) continue;
+            if (!cs.fontFamily.includes(family)) continue;
+            for (const ch of t) {
+              const c = ch.codePointAt(0);
+              if (c > 0x20 && c !== 0x7f) seen.add(ch);
+            }
+          }
+          return [...seen].join("");
+        },
+        { minWeight: HEAVY_MIN_WEIGHT, family: SERIF_FAMILY },
+      );
+      for (const ch of found) chars.add(ch);
     }
+  } finally {
+    // 与 main() 里 kill server 的 finally 对齐：任一页面抛错也不留下 chromium 子进程。
+    await browser.close();
   }
 
-  await browser.close();
   return { chars, pages: urls.length };
 }
 
