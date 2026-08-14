@@ -8,6 +8,7 @@
     "start": "next start",
     "fonts": "node scripts/build-fonts.mjs",
     "glyphs": "node scripts/collect-glyphs.mjs",
+    "glyphs:check": "node scripts/collect-glyphs.mjs --check",
     "test": "playwright test"
   },
   "dependencies": {

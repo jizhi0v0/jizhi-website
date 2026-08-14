@@ -46,18 +46,45 @@ async function freePort() {
   });
 }
 
-async function waitReady(base, timeoutMs = 60_000) {
+// 等 server 就绪。返回它**实际**监听的 base URL：freePort() 拿到端口后就把监听
+// 关了，到 next start 真正绑定之间存在被抢占的窗口；一旦被抢，我们预挑的端口上
+// 什么都没有，只会干等到超时、还报一个「next 没起来」的误导信息。所以以 next
+// 自己打印的地址为准，预挑端口只作为初始猜测。
+async function waitReady(guessBase, logs, timeoutMs = 90_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    // next start 启动后会打印 "- Local: http://localhost:PORT"
+    const m = logs.text().match(/https?:\/\/(?:localhost|127\.0\.0\.1):(\d+)/);
+    const base = m ? `http://127.0.0.1:${m[1]}` : guessBase;
     try {
       const r = await fetch(base + "/sitemap.xml");
-      if (r.ok) return;
+      if (r.ok) return base;
     } catch {
       // 还没起来，继续等
     }
     await new Promise((r) => setTimeout(r, 300));
   }
-  throw new Error(`next start 在 ${timeoutMs}ms 内没就绪`);
+  // 把 next 自己的输出带出来——否则 CI 上只看到一句超时，无从查因
+  // （端口冲突、缺 .next 构建产物、依赖问题，症状全都是这一句）。
+  throw new Error(
+    `next start 在 ${timeoutMs}ms 内没就绪。它的输出（末 ${logs.MAX} 行）：\n${logs.text() || "（无输出）"}`,
+  );
+}
+
+// 收尾部若干行，够定位即可，不把整个构建日志堆在内存里。
+function ringBuffer(max = 40) {
+  const lines = [];
+  return {
+    MAX: max,
+    push(chunk) {
+      for (const l of String(chunk).split("\n")) {
+        if (!l.trim()) continue;
+        lines.push(l);
+        if (lines.length > max) lines.shift();
+      }
+    },
+    text: () => lines.join("\n"),
+  };
 }
 
 async function collect(base) {
@@ -74,7 +101,15 @@ async function collect(base) {
   const chars = new Set();
 
   for (const u of urls) {
+    // DCL 之后再等一次 load：本脚本要的是「所有会以 ≥600 渲染的文本」的超集，
+    // 若某段文本要 hydration 之后才进 DOM，只等 DCL 就会被这一趟扫描漏掉，闸门
+    // 便会静默放过、生产上掉字。当前站点的 Client Component 也走 SSR，所以 DCL
+    // 时刻其实已经够；但一旦有人引入 dynamic(..., { ssr: false }) 或在 useEffect
+    // 里渲出加粗中文，这行就是唯一的防线。
+    // 不用 networkidle：站点挂着 analytics / speed-insights 的长连接，永远等不到
+    // 空闲（同样的理由见 tests/viewport-overflow.spec.ts）。
     await page.goto(u, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("load");
     const found = await page.evaluate(
       ({ minWeight, family }) => {
         const out = [];
@@ -108,16 +143,20 @@ async function collect(base) {
 
 async function main() {
   const port = await freePort();
-  const base = `http://127.0.0.1:${port}`;
+  const logs = ringBuffer();
   const server = spawn("node", [path.join(ROOT, "node_modules", "next", "dist", "bin", "next"), "start"], {
     cwd: ROOT,
     env: { ...process.env, PORT: String(port) },
-    stdio: "ignore",
+    // 接出 next 的输出：happy path 上不打印（安静如旧），起不来时用于报错定位，
+    // 同时从中读它实际监听的端口（见 waitReady）。
+    stdio: ["ignore", "pipe", "pipe"],
   });
+  server.stdout.on("data", (c) => logs.push(c));
+  server.stderr.on("data", (c) => logs.push(c));
 
   let result;
   try {
-    await waitReady(base);
+    const base = await waitReady(`http://127.0.0.1:${port}`, logs);
     result = await collect(base);
   } finally {
     server.kill("SIGTERM");
