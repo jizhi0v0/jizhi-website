@@ -96,10 +96,16 @@ export function collectSets() {
       ...s.matchAll(/^\s*\|.*$/gm), // 表格整张（表头 th 吃 600）
       ...s.matchAll(/^\s*<[A-Z][\s\S]*?>/gm), // JSX 标签行（<Tweet name="…"> 等属性）
       // 强调：整行收，不去猜 `**` 怎么配对。CommonMark 的 flanking 规则遇到全角
-      // 标点会配错位（实例见 surge-tailscale-engine-rewrite.mdx:17，加粗落到了两段
-      // 强调「中间」的文字上），正则按 \*\*…\*\* 取到的范围和解析器实际加粗的范围
-      // 可能完全不是一回事。整行吃进就与配对结果无关，代价只是几十个字形。
+      // 标点会配错位（实例见 surge-tailscale-engine-rewrite.mdx:17，加粗被解析成
+      // 嵌套 strong、把两段强调「中间」的文字也卷了进去），正则按 \*\*…\*\* 取到的
+      // 范围和解析器实际加粗的范围可能完全不是一回事。整行吃进就与配对结果无关。
       ...s.matchAll(/^.*(?:\*\*|__|<(?:strong|b)[\s>]).*$/gm),
+      // 再补跨行强调：CommonMark 允许 `**…**` 跨软换行，此时中间那些不含标记的
+      // 行按上面的逐行规则收不到。范围限定在段落内——emphasis 不能跨空行，所以
+      // `(?!\n\s*\n)` 这道护栏是紧的；不设护栏的 [\s\S]+? 遇到奇数个 ** 会一路
+      // 吃穿整个文件，把 heavy 面撑到接近 body、白丢压缩收益。
+      ...s.matchAll(/\*\*(?:(?!\n\s*\n)[\s\S])+?\*\*/g),
+      ...s.matchAll(/__(?:(?!\n\s*\n)[\s\S])+?__/g),
     ].map((m) => m[0]);
     for (const p of picks) add(heavy, p);
   }
