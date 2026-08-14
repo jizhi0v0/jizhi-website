@@ -53,9 +53,11 @@ async function freePort() {
 async function waitReady(guessBase, logs, timeoutMs = 90_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    // next start 启动后会打印 "- Local: http://localhost:PORT"
-    const m = logs.text().match(/https?:\/\/(?:localhost|127\.0\.0\.1):(\d+)/);
-    const base = m ? `http://127.0.0.1:${m[1]}` : guessBase;
+    // next start 启动后会打印 "- Local: http://localhost:PORT"。只认 Local: 这一行，
+    // 并取最后一次匹配：日志里可能还有别的带端口的 URL（报错栈、Network: 行），
+    // 从整段文本里抓首个匹配会认错端口，然后一直探一个不存在的地址直到超时。
+    const hits = [...logs.text().matchAll(/Local:\s+https?:\/\/[^\s:]+:(\d+)/g)];
+    const base = hits.length ? `http://127.0.0.1:${hits[hits.length - 1][1]}` : guessBase;
     try {
       const r = await fetch(base + "/sitemap.xml");
       if (r.ok) return base;
@@ -92,7 +94,10 @@ async function collect(base) {
   const urls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) =>
     m[1].replace(/^https?:\/\/[^/]+/, base),
   );
-  // sitemap 不含 404 页，但它同样渲染 UI 文案（标题吃 600），显式补上。
+  // 补两个不存在的路径。注意：本站目前**没有**自定义 404 页（app/ 下无 not-found
+  // 组件），这两条命中的是 Next 内置的默认错误页——system-ui 字体、字重最高 500，
+  // 对重字重面的贡献是零。留着是为了以后真加了自定义 404 时自动纳入采集，别误以为
+  // 现在已经覆盖了「站点自己的 404 UI」。
   urls.push(base + "/__not-found__", base + "/en/__not-found__");
 
   const chars = new Set();
@@ -109,7 +114,9 @@ async function collect(base) {
       // 渲出加粗中文，这一步就是唯一的防线。
       // 不用 networkidle：站点挂着 analytics / speed-insights 的长连接，永远等不到
       // 空闲（同样的理由见 tests/viewport-overflow.spec.ts）。
-      await page.goto(u, { waitUntil: "load" });
+      // 显式给足超时：默认 30s 在 CI 冷启（首个页面要等 next 编译/预热）下偏紧，
+      // 撞上就是一次莫名其妙的红。
+      await page.goto(u, { waitUntil: "load", timeout: 60_000 });
       // 在页内就去重成字符串再回传：判据只关心「出现过哪些字」，没必要把每个文本
       // 节点的整段文字都跨 CDP 序列化一遍。
       const found = await page.evaluate(
