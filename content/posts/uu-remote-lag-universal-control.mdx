@@ -1,0 +1,208 @@
+---
+title: UU 远程操作卡成彩虹圈：凶手是通用控制留下的 4 个虚拟键盘
+date: 2026-09-16
+category: 工具
+tags: [macOS, UU 远程, 通用控制, HID, 排查]
+excerpt: 画面流畅、一动鼠标就转彩虹圈，换了几个版本都一样。采样下来，控制端主线程 62% 的时间在等 HID 属性读写，拖后腿的是通用控制残留的 4 个虚拟设备，每读一次要 33ms。
+---
+
+症状很别扭：用 Mac mini 通过 UU 远程控制 MacBook Pro，**画面一点不卡，操作却卡得离谱**。鼠标拖不动、控制端频繁转彩虹圈，最严重的时候整个窗口只剩左上角的苹果菜单能点。
+
+4.39.0、4.39.1、4.40.0 都试过，全都卡；退回 4.35.0 会轻不少。很容易就得出「新版本有 bug」「网络不好」的结论。最后查下来，两个都不是。
+
+先说结论：
+
+> mini 上残留着 4 个由「通用控制」创建的虚拟 HID 设备，每读一次属性要 33ms。UU 控制端在主线程上逐个设备同步读写鼠标加速度，于是每处理一次鼠标事件都要排队等它们。重启通用控制进程后卡顿立刻消失。
+
+环境：
+
+- 控制端：Mac mini，macOS 26.6 (25G72)
+- 被控端：MacBook Pro (M3 Max)，macOS 27.0
+- UU 远程：两端同为 4.39.0 (618)，后来升级到 4.40.0 (621)
+
+## 先排除被控端和网络
+
+既然画面流畅，视频流这条路大概率没问题。但「大概率」不算证据，先量一下。
+
+**被控端没有卡。** 对 MacBook Pro 上负责推流的 `UURemoteServer` 用 `sample` 采了 8 秒，绝大多数线程停在 `kevent`、`__psynch_cvwait` 这类等待上，没有哪个线程被堵住。
+
+**网络也没问题。** 用 `nettop` 看每条连接：视频流走的是网易中转服务器的一条 TCP 连接，RTT 16–20ms；采样期间重传计数一个没涨。控制端上行的输入数据每秒只有几 KB，量很小。
+
+所以问题在**控制端本机**。
+
+## 控制端：主线程 62% 的时间在等 HID
+
+对 mini 上的 `UURemote` 进程采样 8 秒（`sample` 每 1ms 采一次），期间一直在操作。主线程一共 5423 个样本，热点非常集中：
+
+| 主线程停在哪 | 样本数 |
+| --- | ---: |
+| `IOHIDServiceClientSetProperty`（阻塞在 `mach_msg`） | 2477 |
+| `IOHIDServiceClientCopyProperty`（阻塞在 `mach_msg`） | 891 |
+| **合计** | **3368（62%）** |
+
+这两个都是**同步 IPC**：调用方要一直等 HID 事件系统回复。它们从两个入口被调用：
+
+```text
+入口 1：鼠标在画面上移动（1824 个样本）
+  -[NSTrackingArea mouseMoved:]
+    → UURemote 内部若干层
+      → IOHIDServiceClientSetProperty / CopyProperty
+
+入口 2：窗口失去焦点（1563 个样本）
+  -[NSApplication _handleDeactivateEvent:]
+    → -[NSWindow resignKeyWindow]
+      → UURemote 内部若干层
+        → 同一个函数
+```
+
+这就解释了为什么只有苹果菜单能点：菜单栏由系统绘制，而 UU 窗口里的一切都要靠主线程处理，主线程却在等 IPC 回复。
+
+## 这段代码在干什么
+
+两个入口最终汇合到同一个函数。它在 4.39.0 里的地址是 `UURemote+0x38e6c8`，本机装的是同一个 build，可以直接反汇编：
+
+```text
+bl  Swift.String._bridgeToObjectiveC()   ; 把 key 转成 NSString
+bl  IOHIDServiceClientCopyProperty       ; 读
+bl  Swift.String._bridgeToObjectiveC()
+bl  IOHIDServiceClientSetProperty        ; 写
+bl  Swift.String._bridgeToObjectiveC()
+bl  IOHIDServiceClientCopyProperty       ; 再读一次，校验
+```
+
+属性 key 是作为参数传进来的。二进制里能对上的只有这几个：
+
+```text
+HIDMouseAcceleration
+HIDPointerAcceleration
+HIDPointerAccelerationType
+HIDUseLinearScalingMouseAcceleration
+```
+
+意图不难猜：鼠标进入远程画面时关掉本机的鼠标加速度，免得本机加速曲线和远端叠在一起；离开画面或窗口失焦时再恢复。做法本身合理，问题在于它**在主线程上同步做，而且是一个 HID service 一个 service 地做**。
+
+这时我还以为是 4.39 新加的逻辑。把 4.35.0 和 4.39.0 的安装包都解开对比，两个版本的 `UURemote` 里有同样的 4 个 key、同样的导入符号。所以这段代码早就在了，4.35 为什么轻一些，我到最后也没查明。
+
+## 谁在拖慢：4 个 33ms 的虚拟设备
+
+单次 IPC 正常只要零点几毫秒，能把主线程拖成这样，一定有某些设备回复得特别慢。于是写了个只读的小探针：枚举所有 HID service，给每个读一次鼠标加速度属性，并计时。
+
+结果一目了然。mini 上一共 132 个 service，128 个都在 1ms 以内，剩下 4 个是这样：
+
+```text
+77  avg=32.984ms  max=33.437ms  V-Apple Internal Keyboard / Trackpad
+80  avg=34.489ms  max=65.776ms  V-Apple Internal Keyboard / Trackpad
+101 avg=32.964ms  max=33.430ms  V-Apple Internal Keyboard / Trackpad
+120 avg=32.971ms  max=33.560ms  V-Apple Internal Keyboard / Trackpad
+```
+
+同样的探针在 MacBook Pro 上跑：137 个 service，全部 0.3ms 以内。
+
+Mac mini 根本没有内置键盘和触控板，这 4 个肯定不是真实硬件。再读几个属性：
+
+- `Transport` = `FIFO`
+- `VendorID` / `ProductID` 都是 0
+- RegistryID 和真实设备的格式明显不同，`ioreg` 里按名字也搜不到
+
+这些都说明它们是某个进程在用户态建的虚拟 HID 服务。
+
+粗算一下代价：每处理一次鼠标事件，4 个设备各做一轮「读、写、再读」，4 × 3 × 33ms ≈ 400ms。这是按读取耗时估的，写入的耗时我没单独测，但量级和彩虹圈对得上。
+
+## 是谁建的：通用控制
+
+线索在名字上。**MacBook Pro 内置键盘触控板的设备名，正好是 `Apple Internal Keyboard / Trackpad`**，前面加个 `V-`，就是 mini 上这 4 个设备的名字。
+
+我平时会用 MacBook Pro 通过「通用控制」直接操作 mini。去看 mini 上的 `UniversalControl` 二进制，里面有 `HIDVirtualServicePool`、`UniversalControlVirtualService` 这些字符串。这个进程已经连续跑了 38 天。
+
+猜测是它，那就重启它来验证。这一步比想象中麻烦：
+
+| 尝试 | 结果 |
+| --- | --- |
+| `killall UniversalControl` | 返回成功，进程没变 |
+| `kill -TERM` | 返回成功，进程仍然没有退出 |
+| `launchctl kickstart -k gui/501/com.apple.ensemble` | 被拒：`Operation not permitted while System Integrity Protection is engaged` |
+| `kill -9` | 进程退出，launchd 立即拉起新进程 |
+
+`kill -9` 之后再跑一遍探针：service 从 132 个降到 **128 个**，4 个 `V-Apple` 设备全部消失，也不再有耗时超过 10ms 的设备。它们确实归通用控制所有。
+
+## 结果
+
+重启通用控制后再采样，UU 控制端主线程的 6854 个样本里，**没有一个停在 HID 调用上**。实际操作也不卡了。随后两端都升级到当前最新的 4.40.0，依然流畅。
+
+所以之前试 4.40.0 时觉得也卡，很可能就是这 4 个设备在作怪，跟版本没关系。
+
+## 为什么会积累下来（推测）
+
+下面这些没有验证，只是和现有数据对得上。
+
+- **可能是连接失败时漏清的。** 那段时间用 MacBook Pro 通过通用控制操作 mini，鼠标经常失效。一种合理的解释是，每次失效或重连都新建一个虚拟设备，旧的没清掉。4 个设备的 RegistryID 里有 3 个紧挨着，符合短时间内反复重连的情况。
+- **跨系统版本是不是诱因，不确定。** 两台机器一台 macOS 27、一台 26.6。苹果的[通用控制说明](https://support.apple.com/en-us/102459)只要求 macOS Monterey 12.4 或更高，没说两台 Mac 系统版本要一致。等 mini 也升到 27，再看还会不会积累，就能区分开。
+
+## 两边各有问题
+
+- **苹果：** 通用控制断开以后没有清理虚拟设备，而这些设备每次属性请求都要让调用方等 33ms。任何遍历全部 HID service 去读写属性的程序都会被拖累，UU 只是正好撞上。
+- **UU：** 在主线程上同步读写全部 HID service 的属性。只要系统里有一个响应慢的设备，整个界面就卡死。比较稳妥的做法是：
+  1. 把 HID 属性读写挪到后台队列；
+  2. 按 `PrimaryUsage` 只处理鼠标、触控板类设备，别遍历全部 service；
+  3. 只在鼠标进入、离开画面时设置一次，并缓存状态，别在移动事件的处理路径里反复读写。
+
+UU 客户端里有意见反馈入口，问题类型选「操作问题」即可。
+
+## 自查和处理
+
+如果你也遇到「画面流畅、操作卡、彩虹圈」，可以用下面这个探针检查一下。它只读取属性，不改任何设置，只打印耗时超过 5ms 的设备：
+
+```c
+// hidslow.c —— 找出读一次属性就很慢的 HID service
+// 编译：clang -o hidslow hidslow.c -framework IOKit -framework CoreFoundation
+#include <CoreFoundation/CoreFoundation.h>
+#include <mach/mach_time.h>
+#include <stdio.h>
+
+// 这几个是 IOKit 的私有 SPI，公开 SDK 没有头文件，手动声明
+typedef struct __IOHIDEventSystemClient *IOHIDEventSystemClientRef;
+typedef struct __IOHIDServiceClient *IOHIDServiceClientRef;
+extern IOHIDEventSystemClientRef IOHIDEventSystemClientCreateSimpleClient(CFAllocatorRef);
+extern CFArrayRef IOHIDEventSystemClientCopyServices(IOHIDEventSystemClientRef);
+extern CFTypeRef IOHIDServiceClientCopyProperty(IOHIDServiceClientRef, CFStringRef);
+
+static double elapsed_ms(uint64_t start) {
+  static mach_timebase_info_data_t tb;
+  if (!tb.denom) mach_timebase_info(&tb);
+  return (double)(mach_absolute_time() - start) * tb.numer / tb.denom / 1e6;
+}
+
+int main(void) {
+  IOHIDEventSystemClientRef client = IOHIDEventSystemClientCreateSimpleClient(kCFAllocatorDefault);
+  CFArrayRef services = IOHIDEventSystemClientCopyServices(client);
+  CFIndex count = services ? CFArrayGetCount(services) : 0;
+  printf("services=%ld\n", (long)count);
+
+  for (CFIndex i = 0; i < count; i++) {
+    IOHIDServiceClientRef svc = (IOHIDServiceClientRef)CFArrayGetValueAtIndex(services, i);
+
+    // 只读，不改任何设置
+    uint64_t start = mach_absolute_time();
+    CFTypeRef v = IOHIDServiceClientCopyProperty(svc, CFSTR("HIDPointerAcceleration"));
+    double ms = elapsed_ms(start);
+    if (v) CFRelease(v);
+    if (ms < 5) continue;
+
+    char name[128] = "?";
+    CFTypeRef p = IOHIDServiceClientCopyProperty(svc, CFSTR("Product"));
+    if (p && CFGetTypeID(p) == CFStringGetTypeID())
+      CFStringGetCString(p, name, sizeof name, kCFStringEncodingUTF8);
+    if (p) CFRelease(p);
+    printf("slow: %.1fms  %s\n", ms, name);
+  }
+  return 0;
+}
+```
+
+需要 Xcode 命令行工具才能编译。如果输出里出现 `slow:` 开头的 `V-` 设备，就重启通用控制。普通的 `killall` 不管用，要用 `kill -9`，launchd 会自动重新拉起它，通用控制只会断开几秒：
+
+```bash
+kill -9 $(pgrep -f UniversalControl.app/Contents/MacOS/UniversalControl)
+```
+
+回头看，这次最关键的一步不是换版本，也不是查网络，而是**直接对卡住的那个进程采样**。彩虹圈的意思就是主线程没空，看它在等什么，基本就找到答案了。

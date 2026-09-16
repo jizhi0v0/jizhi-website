@@ -1,0 +1,208 @@
+---
+title: "UU Remote Stuck on the Spinning Wheel: Four Virtual Keyboards Left Behind by Universal Control"
+date: 2026-09-16
+category: Tools
+tags: [macOS, UU Remote, Universal Control, HID, Debugging]
+excerpt: The picture was smooth, but every mouse move brought the spinning wheel, on every version I tried. Sampling showed the controller's main thread spending 62% of its time waiting on HID property reads and writes — held up by four virtual devices left behind by Universal Control, each taking 33ms per read.
+---
+
+The symptom was odd. I was using a Mac mini to control a MacBook Pro through UU Remote (NetEase's remote desktop app). **The picture was perfectly smooth, but input was terribly laggy.** The mouse barely moved, the controller kept showing the spinning wheel, and at its worst the only thing I could click in the whole window was the Apple menu in the top-left corner.
+
+I tried 4.39.0, 4.39.1 and 4.40.0, and all of them lagged; going back to 4.35.0 was noticeably better. The obvious conclusions were "the new version is buggy" or "the network is bad". Neither turned out to be true.
+
+The short version:
+
+> The mini had four leftover virtual HID devices created by Universal Control, and each took 33ms to answer a property read. UU's controller reads and writes mouse acceleration on every device, synchronously, on the main thread — so every mouse event had to wait in line behind those four. Restarting the Universal Control process made the lag disappear immediately.
+
+Setup:
+
+- Controller: Mac mini, macOS 26.6 (25G72)
+- Controlled machine: MacBook Pro (M3 Max), macOS 27.0
+- UU Remote: 4.39.0 (618) on both ends, later upgraded to 4.40.0 (621)
+
+## Ruling out the controlled machine and the network
+
+Since the picture was smooth, the video path was probably fine. But "probably" isn't evidence, so I measured it.
+
+**The controlled machine wasn't stuck.** I ran `sample` for 8 seconds on `UURemoteServer`, the process that streams from the MacBook Pro. Almost every thread was parked in a wait such as `kevent` or `__psynch_cvwait`; nothing was blocked.
+
+**The network was fine too.** Per-connection stats from `nettop` showed the video going over a single TCP connection through a NetEase relay server, with an RTT of 16–20ms. The retransmit counter didn't move during the sample. Input traffic going up from the controller was only a few KB per second.
+
+So the problem was **on the controller itself**.
+
+## The controller: 62% of the main thread waiting on HID
+
+I sampled the `UURemote` process on the mini for 8 seconds (`sample` takes a sample every 1ms) while using it the whole time. Of the main thread's 5,423 samples, the hotspots were very concentrated:
+
+| Where the main thread was stuck | Samples |
+| --- | ---: |
+| `IOHIDServiceClientSetProperty` (blocked in `mach_msg`) | 2,477 |
+| `IOHIDServiceClientCopyProperty` (blocked in `mach_msg`) | 891 |
+| **Total** | **3,368 (62%)** |
+
+Both are **synchronous IPC** calls: the caller waits until the HID event system replies. They were reached from two entry points:
+
+```text
+Entry 1: mouse moving over the remote view (1,824 samples)
+  -[NSTrackingArea mouseMoved:]
+    → several layers inside UURemote
+      → IOHIDServiceClientSetProperty / CopyProperty
+
+Entry 2: window losing focus (1,563 samples)
+  -[NSApplication _handleDeactivateEvent:]
+    → -[NSWindow resignKeyWindow]
+      → several layers inside UURemote
+        → the same function
+```
+
+That also explains why only the Apple menu still worked. The menu bar is drawn by the system, while everything inside UU's window needs the main thread, and the main thread was waiting for IPC replies.
+
+## What that code does
+
+Both entry points end up in the same function, at `UURemote+0x38e6c8` in 4.39.0. My own machine has the same build installed, so I could disassemble it directly:
+
+```text
+bl  Swift.String._bridgeToObjectiveC()   ; turn the key into an NSString
+bl  IOHIDServiceClientCopyProperty       ; read
+bl  Swift.String._bridgeToObjectiveC()
+bl  IOHIDServiceClientSetProperty        ; write
+bl  Swift.String._bridgeToObjectiveC()
+bl  IOHIDServiceClientCopyProperty       ; read again to verify
+```
+
+The property key is passed in as an argument. The only matching keys in the binary are:
+
+```text
+HIDMouseAcceleration
+HIDPointerAcceleration
+HIDPointerAccelerationType
+HIDUseLinearScalingMouseAcceleration
+```
+
+The intent is easy to guess: turn off local mouse acceleration when the cursor enters the remote view, so the local acceleration curve doesn't stack with the remote one, then restore it when the cursor leaves or the window loses focus. That's reasonable. The problem is that it **runs synchronously on the main thread, one HID service at a time**.
+
+At this point I assumed it was new in 4.39. I unpacked both the 4.35.0 and 4.39.0 installers to compare, and both `UURemote` binaries contain the same four keys and the same imported symbols. So the code has been there all along; I never did figure out why 4.35 felt lighter.
+
+## What was slow: four virtual devices at 33ms each
+
+A single IPC call normally takes a fraction of a millisecond. For the main thread to be dragged down this far, some devices had to be replying very slowly. So I wrote a small read-only probe: enumerate every HID service, read the mouse acceleration property from each one, and time it.
+
+The answer was obvious. The mini had 132 services, 128 of them under 1ms. The other four looked like this:
+
+```text
+77  avg=32.984ms  max=33.437ms  V-Apple Internal Keyboard / Trackpad
+80  avg=34.489ms  max=65.776ms  V-Apple Internal Keyboard / Trackpad
+101 avg=32.964ms  max=33.430ms  V-Apple Internal Keyboard / Trackpad
+120 avg=32.971ms  max=33.560ms  V-Apple Internal Keyboard / Trackpad
+```
+
+The same probe on the MacBook Pro: 137 services, all under 0.3ms.
+
+A Mac mini has no built-in keyboard or trackpad, so these four can't be real hardware. A few more properties:
+
+- `Transport` = `FIFO`
+- `VendorID` / `ProductID` are both 0
+- Their RegistryIDs look nothing like those of real devices, and searching `ioreg` by name finds nothing
+
+All of this points to virtual HID services created in user space by some process.
+
+A rough cost: for each mouse event, each of the four devices gets a read, a write and another read, so 4 × 3 × 33ms ≈ 400ms. That estimate is based on read timings; I didn't time writes separately. Still, the magnitude matches the spinning wheel.
+
+## Who created them: Universal Control
+
+The clue was in the name. **The MacBook Pro's built-in keyboard and trackpad are named exactly `Apple Internal Keyboard / Trackpad`.** Add a `V-` prefix and you get the name of those four devices on the mini.
+
+I often use the MacBook Pro to drive the mini directly through Universal Control. The `UniversalControl` binary on the mini contains strings like `HIDVirtualServicePool` and `UniversalControlVirtualService`, and the process had been running for 38 days straight.
+
+If it was the culprit, restarting it would prove it. That was harder than expected:
+
+| Attempt | Result |
+| --- | --- |
+| `killall UniversalControl` | Reported success; same process |
+| `kill -TERM` | Reported success; the process still didn't exit |
+| `launchctl kickstart -k gui/501/com.apple.ensemble` | Refused: `Operation not permitted while System Integrity Protection is engaged` |
+| `kill -9` | Process exited; launchd immediately started a new one |
+
+After `kill -9` I ran the probe again. The service count dropped from 132 to **128**, all four `V-Apple` devices were gone, and nothing took more than 10ms any more. They really did belong to Universal Control.
+
+## The result
+
+Sampling again after the restart, **not one** of the UU controller's 6,854 main-thread samples was stuck in a HID call, and actual use was smooth again. I then upgraded both machines to 4.40.0, the current latest, and it stayed smooth.
+
+So when 4.40.0 seemed laggy earlier, those four devices were most likely to blame, not the version.
+
+## Why they piled up (speculation)
+
+Nothing in this section is verified; it's just consistent with the data.
+
+- **They may have leaked when connections failed.** Around that time, while I was driving the mini from the MacBook Pro through Universal Control, the mouse often stopped working. One plausible explanation is that each failure or reconnect created a new virtual device without cleaning up the old one. Three of the four RegistryIDs are right next to each other, which fits repeated reconnects in a short window.
+- **Whether mixing macOS versions matters is unclear.** One machine runs macOS 27, the other 26.6. Apple's [Universal Control page](https://support.apple.com/en-us/102459) only requires macOS Monterey 12.4 or later and doesn't say both Macs need the same version. Once the mini is on 27 too, checking whether devices still pile up will tell the two cases apart.
+
+## Both sides have a problem
+
+- **Apple:** Universal Control doesn't clean up its virtual devices after disconnecting, and every property request to those devices makes the caller wait 33ms. Any program that reads or writes properties across all HID services gets dragged down; UU just happened to hit it.
+- **UU:** It reads and writes properties on every HID service synchronously on the main thread, so a single slow device freezes the whole UI. Safer approaches:
+  1. Move HID property reads and writes to a background queue.
+  2. Use `PrimaryUsage` to touch only mouse and trackpad devices instead of every service.
+  3. Set the value once when the cursor enters or leaves the view, cache the state, and keep the reads and writes out of the mouse-move handling path.
+
+The UU client has a built-in feedback form; "操作问题" (input issues) is the right category.
+
+## Check for it yourself
+
+If you're seeing "smooth picture, laggy input, spinning wheel", this probe will check for slow devices. It only reads properties, changes no settings, and prints only devices that take longer than 5ms:
+
+```c
+// hidslow.c — find HID services that are slow to answer a property read
+// Build: clang -o hidslow hidslow.c -framework IOKit -framework CoreFoundation
+#include <CoreFoundation/CoreFoundation.h>
+#include <mach/mach_time.h>
+#include <stdio.h>
+
+// Private IOKit SPI: no headers in the public SDK, so declare them by hand
+typedef struct __IOHIDEventSystemClient *IOHIDEventSystemClientRef;
+typedef struct __IOHIDServiceClient *IOHIDServiceClientRef;
+extern IOHIDEventSystemClientRef IOHIDEventSystemClientCreateSimpleClient(CFAllocatorRef);
+extern CFArrayRef IOHIDEventSystemClientCopyServices(IOHIDEventSystemClientRef);
+extern CFTypeRef IOHIDServiceClientCopyProperty(IOHIDServiceClientRef, CFStringRef);
+
+static double elapsed_ms(uint64_t start) {
+  static mach_timebase_info_data_t tb;
+  if (!tb.denom) mach_timebase_info(&tb);
+  return (double)(mach_absolute_time() - start) * tb.numer / tb.denom / 1e6;
+}
+
+int main(void) {
+  IOHIDEventSystemClientRef client = IOHIDEventSystemClientCreateSimpleClient(kCFAllocatorDefault);
+  CFArrayRef services = IOHIDEventSystemClientCopyServices(client);
+  CFIndex count = services ? CFArrayGetCount(services) : 0;
+  printf("services=%ld\n", (long)count);
+
+  for (CFIndex i = 0; i < count; i++) {
+    IOHIDServiceClientRef svc = (IOHIDServiceClientRef)CFArrayGetValueAtIndex(services, i);
+
+    // Read-only; changes no settings
+    uint64_t start = mach_absolute_time();
+    CFTypeRef v = IOHIDServiceClientCopyProperty(svc, CFSTR("HIDPointerAcceleration"));
+    double ms = elapsed_ms(start);
+    if (v) CFRelease(v);
+    if (ms < 5) continue;
+
+    char name[128] = "?";
+    CFTypeRef p = IOHIDServiceClientCopyProperty(svc, CFSTR("Product"));
+    if (p && CFGetTypeID(p) == CFStringGetTypeID())
+      CFStringGetCString(p, name, sizeof name, kCFStringEncodingUTF8);
+    if (p) CFRelease(p);
+    printf("slow: %.1fms  %s\n", ms, name);
+  }
+  return 0;
+}
+```
+
+Compiling it requires the Xcode Command Line Tools. If the output shows a `slow:` line for a `V-` device, restart Universal Control. A plain `killall` won't work; use `kill -9`. launchd restarts it automatically, so Universal Control only drops out for a few seconds:
+
+```bash
+kill -9 $(pgrep -f UniversalControl.app/Contents/MacOS/UniversalControl)
+```
+
+Looking back, the key step wasn't switching versions or checking the network. It was **sampling the process that was actually stuck**. A spinning wheel means the main thread is busy; find out what it's waiting on and you've mostly found the answer.
